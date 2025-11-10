@@ -70,7 +70,7 @@ Project to translate a markdown book into Japanese using OpenAI's GPT-5 API, wit
 
 ## Phase 4: Translation Engine
 
-- [ ] Main translation orchestrator (`src/translationEngine.js`)
+- [x] Main translation orchestrator (`src/translationEngine.js`)
   - Load chunks from chunker
   - Process chunks sequentially (avoid parallel to manage rate limits)
   - Track progress (current chunk / total chunks)
