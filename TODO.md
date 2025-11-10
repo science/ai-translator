@@ -140,22 +140,25 @@ Project to translate a markdown book into Japanese using OpenAI's GPT-5 API, wit
 
 ## Phase 7: Testing & Validation
 
-- [ ] Unit testing
+- [x] Unit testing
   - Test chunker with sample markdown
   - Verify chunk boundaries are logical
   - Test cache save/load functionality
 
-- [ ] Integration testing
+- [x] Integration testing
   - Run translation on first 3-5 chunks only
   - Verify API connectivity and response format
   - Check output file structure
+  - Full pipeline testing (read → chunk → translate → assemble)
+  - Translator testing with mock API
+  - Translation engine orchestration testing
 
-- [ ] Quality validation
+- [x] Quality validation
   - Review sample translations for accuracy
   - Verify markdown structure preserved
   - Check bilingual format readability
 
-- [ ] Documentation
+- [x] Documentation
   - Create `README.md` with:
     - Project description
     - Setup instructions
