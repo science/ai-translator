@@ -28,7 +28,7 @@ Project to translate a markdown book into Japanese using OpenAI's GPT-5 API, wit
 
 ## Phase 2: Core Utilities
 
-- [ ] Markdown file reader (`src/fileReader.js`)
+- [x] Markdown file reader (`src/fileReader.js`)
   - Read markdown file from path
   - Return full content as string
   - Handle file not found errors
