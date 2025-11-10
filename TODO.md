@@ -33,7 +33,7 @@ Project to translate a markdown book into Japanese using OpenAI's GPT-5 API, wit
   - Return full content as string
   - Handle file not found errors
 
-- [ ] Chunking strategy implementation (`src/chunker.js`)
+- [x] Chunking strategy implementation (`src/chunker.js`)
   - Analyze best chunking approach (by headers, paragraphs, or token count)
   - Implement chunk splitting function
   - Preserve chunk boundaries at logical points (headers/paragraphs)
