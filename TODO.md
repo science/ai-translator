@@ -82,7 +82,7 @@ Project to translate a markdown book into Japanese using OpenAI's GPT-5 API, wit
   - Map original chunks to translations
   - Skip already-translated chunks on restart
 
-- [ ] Progress logging
+- [x] Progress logging
   - Display current chunk being translated
   - Show percentage complete
   - Log timestamp and chunk ID
