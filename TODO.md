@@ -49,7 +49,7 @@ Project to translate a markdown book into Japanese using OpenAI's GPT-5 API, wit
 
 ## Phase 3: OpenAI Integration
 
-- [ ] OpenAI client setup (`src/translator.js`)
+- [x] OpenAI client setup (`src/translator.js`)
   - Import and initialize OpenAI client
   - Load API key from environment variables
   - Configure client options (timeout, retries)
