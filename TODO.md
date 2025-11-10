@@ -39,7 +39,7 @@ Project to translate a markdown book into Japanese using OpenAI's GPT-5 API, wit
   - Preserve chunk boundaries at logical points (headers/paragraphs)
   - Return array of chunks with metadata (position, type)
 
-- [ ] Markdown structure parser (`src/markdownParser.js`)
+- [x] Markdown structure parser (`src/markdownParser.js`)
   - Detect headers (H1-H6)
   - Identify paragraph boundaries
   - Preserve special markdown syntax (links, formatting)
