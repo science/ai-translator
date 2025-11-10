@@ -76,12 +76,24 @@ node src/index.js book.md --output-dir translated/
 # Custom chunk size
 node src/index.js book.md --chunk-size 2000
 
-# Specify different model
+# Specify different model (faster but less sophisticated)
 node src/index.js book.md --model gpt-4o
 
 # Combine options
 node src/index.js book.md --output-dir results/ --chunk-size 3000 --model gpt-4o
 ```
+
+### Expected Runtime
+
+Translation speed varies by model:
+- **GPT-4o**: ~3-5 seconds per chunk (faster, suitable for large documents)
+- **GPT-5**: ~20-25 seconds per chunk (slower due to extended reasoning, higher quality)
+
+For a typical book (~140 chunks):
+- GPT-4o: 10-15 minutes
+- GPT-5: 45-60 minutes
+
+The tool displays real-time progress with ETA calculations.
 
 ## Output Formats
 
