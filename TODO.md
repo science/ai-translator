@@ -113,7 +113,7 @@ Project to translate a markdown book into Japanese using OpenAI's GPT-5 API, wit
 
 ## Phase 6: Main Script
 
-- [ ] CLI implementation (`src/index.js` or `translate.js`)
+- [x] CLI implementation (`src/index.js` or `translate.js`)
   - Accept command-line arguments:
     - Input file path
     - Output directory (optional, default: `output/`)
@@ -121,17 +121,17 @@ Project to translate a markdown book into Japanese using OpenAI's GPT-5 API, wit
     - Model selection (optional, default: GPT-5)
   - Example: `node src/index.js "It's_On_Me_ Accept_Hard_Truths-Sara Kuburic.md"`
 
-- [ ] Configuration options
+- [x] Configuration options
   - Allow custom chunk size via CLI flag
   - Support model selection (GPT-4, GPT-5)
   - Optional flags for output format (JP-only, bilingual, or both)
 
-- [ ] Progress display
+- [x] Progress display
   - Real-time progress bar or percentage
   - ETA calculation based on chunks/second
   - Success/failure summary at completion
 
-- [ ] Output file naming
+- [x] Output file naming
   - Use input filename as base
   - Append `-japanese.md` and `-bilingual.md` suffixes
   - Save to configured output directory
