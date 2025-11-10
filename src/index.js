@@ -20,7 +20,7 @@ async function main() {
     console.log();
 
     console.log('Reading markdown file...');
-    const content = readMarkdownFile(options.inputFile);
+    const content = await readMarkdownFile(options.inputFile);
     console.log(`  File size: ${content.length} characters`);
 
     console.log('Chunking document...');

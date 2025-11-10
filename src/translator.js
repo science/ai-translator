@@ -4,25 +4,31 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 export function createTranslator(options = {}) {
-  const apiKey = options.apiKey || process.env.OPENAI_API_KEY;
+  let client;
 
-  if (!apiKey || apiKey.trim() === '') {
-    throw new Error('OPENAI_API_KEY environment variable is required');
+  if (options.client) {
+    client = options.client;
+  } else {
+    const apiKey = options.apiKey || process.env.OPENAI_API_KEY;
+
+    if (!apiKey || apiKey.trim() === '') {
+      throw new Error('OPENAI_API_KEY environment variable is required');
+    }
+
+    const clientConfig = {
+      apiKey: apiKey,
+    };
+
+    if (options.timeout) {
+      clientConfig.timeout = options.timeout;
+    }
+
+    if (options.maxRetries !== undefined) {
+      clientConfig.maxRetries = options.maxRetries;
+    }
+
+    client = new OpenAI(clientConfig);
   }
-
-  const clientConfig = {
-    apiKey: apiKey,
-  };
-
-  if (options.timeout) {
-    clientConfig.timeout = options.timeout;
-  }
-
-  if (options.maxRetries !== undefined) {
-    clientConfig.maxRetries = options.maxRetries;
-  }
-
-  const client = new OpenAI(clientConfig);
 
   const model = options.model || 'gpt-4o';
   const verbosity = options.verbosity || 'low';
