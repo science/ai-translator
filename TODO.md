@@ -92,19 +92,19 @@ Project to translate a markdown book into Japanese using OpenAI's GPT-5 API, wit
 
 ## Phase 5: Document Assembly
 
-- [ ] Japanese-only assembler (`src/assembler.js`)
+- [x] Japanese-only assembler (`src/assembler.js`)
   - Take all translated chunks
   - Concatenate in original order
   - Preserve markdown structure
   - Write to `output/book-japanese.md`
 
-- [ ] Alternating EN/JP assembler (`src/assembler.js`)
+- [x] Alternating EN/JP assembler (`src/assembler.js`)
   - Interleave original and translated chunks
   - Add clear visual separators (e.g., `---` or section headers)
   - Format: English chunk → Japanese chunk → English chunk...
   - Write to `output/book-bilingual.md`
 
-- [ ] Markdown formatting preservation
+- [x] Markdown formatting preservation
   - Ensure headers maintain hierarchy
   - Keep links, lists, and formatting intact
   - Validate output structure
