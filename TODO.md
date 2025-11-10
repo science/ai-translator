@@ -6,20 +6,20 @@ Project to translate a markdown book into Japanese using OpenAI's GPT-5 API, wit
 
 ## Phase 1: Project Setup
 
-- [ ] Initialize Node.js project
+- [x] Initialize Node.js project
   - Run `npm init -y`
   - Configure `package.json` with project metadata
   - Set `"type": "module"` for ES modules support
 
-- [ ] Install dependencies
+- [x] Install dependencies
   - Install `openai` package: `npm install openai`
   - Install `dotenv` for environment variables: `npm install dotenv`
 
-- [ ] Environment configuration
+- [x] Environment configuration
   - Create `.env` file with `OPENAI_API_KEY` placeholder
   - Create `.env.example` template for reference
 
-- [ ] Project structure
+- [x] Project structure
   - Create `.gitignore` (exclude `node_modules/`, `.env`, `output/`, `*.log`)
   - Create `src/` directory for source code
   - Create `output/` directory for translated files
