@@ -4,7 +4,7 @@ export function parseCliArgs(args) {
   let inputFile = null;
   let outputDir = 'output/';
   let chunkSize = 4000;
-  let model = 'gpt-4o';
+  let model = 'gpt-5';
 
   for (let i = 0; i < cliArgs.length; i++) {
     const arg = cliArgs[i];

@@ -16,7 +16,7 @@ describe('CLI', () => {
 
       expect(result.outputDir).toBe('output/');
       expect(result.chunkSize).toBe(4000);
-      expect(result.model).toBe('gpt-4o');
+      expect(result.model).toBe('gpt-5');
     });
 
     test('should parse output directory option', () => {
