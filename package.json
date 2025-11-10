@@ -5,7 +5,7 @@
   "main": "src/index.js",
   "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },
   "keywords": [
     "translation",
@@ -18,5 +18,8 @@
   "dependencies": {
     "dotenv": "^17.2.3",
     "openai": "^6.8.1"
+  },
+  "devDependencies": {
+    "jest": "^30.2.0"
   }
 }

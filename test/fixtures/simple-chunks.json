@@ -1,0 +1,8 @@
+[
+  {
+    "index": 0,
+    "type": "header-section",
+    "headerLevel": 1,
+    "content": "# Simple Test\n\nThis is a simple test file with one header and one paragraph.\n\nIt has multiple paragraphs to test basic chunking.\n\nThe chunker should handle this correctly."
+  }
+]

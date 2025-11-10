@@ -1,0 +1,32 @@
+[
+  {
+    "index": 0,
+    "type": "header-section",
+    "headerLevel": 1,
+    "content": "# Chapter 1\n\nThis is the introduction to chapter 1.\n\nIt has multiple paragraphs that explain the concept."
+  },
+  {
+    "index": 1,
+    "type": "header-section",
+    "headerLevel": 2,
+    "content": "## Section 1.1\n\nThis is a subsection with its own content.\n\nMultiple paragraphs exist here as well."
+  },
+  {
+    "index": 2,
+    "type": "header-section",
+    "headerLevel": 2,
+    "content": "## Section 1.2\n\nAnother subsection with different content."
+  },
+  {
+    "index": 3,
+    "type": "header-section",
+    "headerLevel": 3,
+    "content": "### Subsection 1.2.1\n\nDeep nesting to test header levels."
+  },
+  {
+    "index": 4,
+    "type": "header-section",
+    "headerLevel": 1,
+    "content": "# Chapter 2\n\nA new top-level chapter.\n\nMore content in chapter 2."
+  }
+]
