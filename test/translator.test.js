@@ -194,4 +194,185 @@ describe('translator', () => {
       );
     });
   });
+
+  describe('error handling and retry logic', () => {
+    let translator;
+    let mockCreate;
+    let consoleSpy;
+
+    beforeEach(() => {
+      process.env.OPENAI_API_KEY = 'test-api-key';
+      mockCreate = jest.fn();
+      consoleSpy = jest.spyOn(console, 'error').mockImplementation();
+
+      translator = createTranslator({ maxRetries: 3 });
+      translator.client.chat.completions.create = mockCreate;
+    });
+
+    afterEach(() => {
+      consoleSpy.mockRestore();
+    });
+
+    test('should retry on rate limit error', async () => {
+      const rateLimitError = new Error('Rate limit exceeded');
+      rateLimitError.status = 429;
+
+      mockCreate
+        .mockRejectedValueOnce(rateLimitError)
+        .mockRejectedValueOnce(rateLimitError)
+        .mockResolvedValueOnce({
+          choices: [{
+            message: { content: '成功' }
+          }]
+        });
+
+      const result = await translator.translateChunk('Test chunk');
+
+      expect(result).toBe('成功');
+      expect(mockCreate).toHaveBeenCalledTimes(3);
+    });
+
+    test('should retry on network error', async () => {
+      const networkError = new Error('Network error');
+      networkError.code = 'ECONNRESET';
+
+      mockCreate
+        .mockRejectedValueOnce(networkError)
+        .mockResolvedValueOnce({
+          choices: [{
+            message: { content: 'ネットワーク回復' }
+          }]
+        });
+
+      const result = await translator.translateChunk('Network test');
+
+      expect(result).toBe('ネットワーク回復');
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+    });
+
+    test('should use exponential backoff between retries', async () => {
+      const error = new Error('Temporary error');
+      error.status = 503;
+
+      jest.useFakeTimers();
+
+      mockCreate
+        .mockRejectedValueOnce(error)
+        .mockRejectedValueOnce(error)
+        .mockResolvedValueOnce({
+          choices: [{
+            message: { content: '成功' }
+          }]
+        });
+
+      const promise = translator.translateChunk('Test');
+
+      await jest.advanceTimersByTimeAsync(1000);
+      await jest.advanceTimersByTimeAsync(2000);
+
+      const result = await promise;
+
+      expect(result).toBe('成功');
+      expect(mockCreate).toHaveBeenCalledTimes(3);
+
+      jest.useRealTimers();
+    });
+
+    test('should stop retrying after max retries', async () => {
+      const error = new Error('Persistent error');
+      error.status = 503;
+
+      mockCreate.mockRejectedValue(error);
+
+      await expect(translator.translateChunk('Test')).rejects.toThrow('Persistent error');
+
+      expect(mockCreate).toHaveBeenCalledTimes(4);
+    }, 10000);
+
+    test('should log errors with chunk context', async () => {
+      const error = new Error('Test error');
+      error.status = 500;
+
+      jest.useFakeTimers();
+
+      mockCreate
+        .mockRejectedValueOnce(error)
+        .mockResolvedValueOnce({
+          choices: [{
+            message: { content: '回復' }
+          }]
+        });
+
+      const chunkText = '# Test Chapter\n\nThis is test content.';
+      const promise = translator.translateChunk(chunkText);
+
+      await jest.advanceTimersByTimeAsync(1000);
+      const result = await promise;
+
+      expect(result).toBe('回復');
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Translation error (attempt 1/4)'),
+        expect.objectContaining({
+          error: 'Test error',
+          chunkLength: 37,
+          retryingIn: '1000ms'
+        })
+      );
+
+      jest.useRealTimers();
+    });
+
+    test('should not retry on non-retryable errors', async () => {
+      const authError = new Error('Invalid API key');
+      authError.status = 401;
+
+      mockCreate.mockRejectedValue(authError);
+
+      await expect(translator.translateChunk('Test')).rejects.toThrow('Invalid API key');
+
+      expect(mockCreate).toHaveBeenCalledTimes(1);
+    });
+
+    test('should handle timeout errors with retry', async () => {
+      const timeoutError = new Error('Request timeout');
+      timeoutError.code = 'ETIMEDOUT';
+
+      mockCreate
+        .mockRejectedValueOnce(timeoutError)
+        .mockResolvedValueOnce({
+          choices: [{
+            message: { content: 'タイムアウト回復' }
+          }]
+        });
+
+      const result = await translator.translateChunk('Timeout test');
+
+      expect(result).toBe('タイムアウト回復');
+      expect(mockCreate).toHaveBeenCalledTimes(2);
+    });
+
+    test('should include chunk preview in error logs for long chunks', async () => {
+      const error = new Error('Test error');
+      error.status = 500;
+
+      mockCreate
+        .mockRejectedValueOnce(error)
+        .mockResolvedValueOnce({
+          choices: [{
+            message: { content: '成功' }
+          }]
+        });
+
+      const longChunk = 'A'.repeat(200);
+      await translator.translateChunk(longChunk);
+
+      expect(consoleSpy).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          chunkPreview: expect.stringMatching(/^A{47}\.\.\.$/),
+          chunkLength: 200
+        })
+      );
+    });
+  });
 });

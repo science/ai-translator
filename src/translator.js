@@ -24,31 +24,83 @@ export function createTranslator(options = {}) {
 
   const client = new OpenAI(clientConfig);
 
+  function isRetryableError(error) {
+    const retryableStatusCodes = [429, 500, 502, 503, 504];
+    const retryableErrorCodes = ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED'];
+
+    if (error.status && retryableStatusCodes.includes(error.status)) {
+      return true;
+    }
+
+    if (error.code && retryableErrorCodes.includes(error.code)) {
+      return true;
+    }
+
+    return false;
+  }
+
+  function getChunkPreview(chunk, maxLength = 50) {
+    if (chunk.length <= maxLength) {
+      return chunk;
+    }
+    return chunk.substring(0, maxLength - 3) + '...';
+  }
+
+  async function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   async function translateChunk(chunk, targetLanguage = 'Japanese') {
     const systemPrompt = `You are a professional translator. Translate the following English text to ${targetLanguage} while preserving markdown formatting.`;
+    const maxAttempts = (options.maxRetries !== undefined ? options.maxRetries : 2) + 1;
 
-    try {
-      const response = await client.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [
-          {
-            role: 'system',
-            content: systemPrompt
-          },
-          {
-            role: 'user',
-            content: chunk
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const response = await client.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [
+            {
+              role: 'system',
+              content: systemPrompt
+            },
+            {
+              role: 'user',
+              content: chunk
+            }
+          ]
+        });
+
+        if (!response.choices || response.choices.length === 0) {
+          throw new Error('Invalid response from OpenAI API');
+        }
+
+        return response.choices[0].message.content;
+      } catch (error) {
+        const isLastAttempt = attempt === maxAttempts;
+        const shouldRetry = isRetryableError(error);
+
+        if (!isLastAttempt && shouldRetry) {
+          const backoffDelay = Math.pow(2, attempt - 1) * 1000;
+
+          console.error(`Translation error (attempt ${attempt}/${maxAttempts}):`, {
+            error: error.message,
+            chunkPreview: getChunkPreview(chunk),
+            chunkLength: chunk.length,
+            retryingIn: `${backoffDelay}ms`
+          });
+
+          await sleep(backoffDelay);
+        } else {
+          if (!shouldRetry) {
+            console.error('Non-retryable translation error:', {
+              error: error.message,
+              status: error.status,
+              chunkPreview: getChunkPreview(chunk)
+            });
           }
-        ]
-      });
-
-      if (!response.choices || response.choices.length === 0) {
-        throw new Error('Invalid response from OpenAI API');
+          throw error;
+        }
       }
-
-      return response.choices[0].message.content;
-    } catch (error) {
-      throw error;
     }
   }
 

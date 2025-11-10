@@ -60,7 +60,7 @@ Project to translate a markdown book into Japanese using OpenAI's GPT-5 API, wit
   - Specify system prompt: "You are a professional translator. Translate the following English text to Japanese while preserving markdown formatting."
   - Return translated text
 
-- [ ] Error handling and resilience
+- [x] Error handling and resilience
   - Catch API errors (rate limits, network issues)
   - Implement exponential backoff retry logic
   - Log errors with chunk context
