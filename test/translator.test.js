@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { createTranslator } from '../src/translator.js';
 
 describe('translator', () => {
@@ -62,6 +63,135 @@ describe('translator', () => {
       expect(translator).toHaveProperty('client');
       expect(translator).toHaveProperty('translateChunk');
       expect(typeof translator.translateChunk).toBe('function');
+    });
+  });
+
+  describe('translateChunk', () => {
+    let translator;
+    let mockCreate;
+
+    beforeEach(() => {
+      process.env.OPENAI_API_KEY = 'test-api-key';
+      mockCreate = jest.fn();
+
+      translator = createTranslator();
+      translator.client.chat.completions.create = mockCreate;
+    });
+
+    test('should translate text to Japanese by default', async () => {
+      const inputText = '# Hello World';
+      const expectedTranslation = '# こんにちは世界';
+
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: {
+            content: expectedTranslation
+          }
+        }]
+      });
+
+      const result = await translator.translateChunk(inputText);
+
+      expect(result).toBe(expectedTranslation);
+      expect(mockCreate).toHaveBeenCalledWith({
+        model: expect.any(String),
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a professional translator. Translate the following English text to Japanese while preserving markdown formatting.'
+          },
+          {
+            role: 'user',
+            content: inputText
+          }
+        ]
+      });
+    });
+
+    test('should preserve markdown formatting in translation', async () => {
+      const inputText = '## Introduction\n\nThis is a **bold** statement with a [link](https://example.com).';
+      const expectedOutput = '## はじめに\n\nこれは**太字**の文で、[リンク](https://example.com)があります。';
+
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: {
+            content: expectedOutput
+          }
+        }]
+      });
+
+      const result = await translator.translateChunk(inputText);
+
+      expect(result).toBe(expectedOutput);
+    });
+
+    test('should support custom target language', async () => {
+      const inputText = 'Hello World';
+      const expectedTranslation = 'Hola Mundo';
+
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: {
+            content: expectedTranslation
+          }
+        }]
+      });
+
+      const result = await translator.translateChunk(inputText, 'Spanish');
+
+      expect(result).toBe(expectedTranslation);
+      expect(mockCreate).toHaveBeenCalledWith({
+        model: expect.any(String),
+        messages: [
+          {
+            role: 'system',
+            content: 'You are a professional translator. Translate the following English text to Spanish while preserving markdown formatting.'
+          },
+          {
+            role: 'user',
+            content: inputText
+          }
+        ]
+      });
+    });
+
+    test('should throw error if API response is invalid', async () => {
+      mockCreate.mockResolvedValue({
+        choices: []
+      });
+
+      await expect(translator.translateChunk('Test')).rejects.toThrow('Invalid response from OpenAI API');
+    });
+
+    test('should throw error if choices array is missing', async () => {
+      mockCreate.mockResolvedValue({});
+
+      await expect(translator.translateChunk('Test')).rejects.toThrow('Invalid response from OpenAI API');
+    });
+
+    test('should propagate API errors', async () => {
+      const apiError = new Error('API rate limit exceeded');
+      mockCreate.mockRejectedValue(apiError);
+
+      await expect(translator.translateChunk('Test')).rejects.toThrow('API rate limit exceeded');
+    });
+
+    test('should use gpt-4o model', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: {
+            content: 'テスト'
+          }
+        }]
+      });
+
+      await translator.translateChunk('Test');
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gpt-4o'
+        })
+      );
     });
   });
 });

@@ -25,7 +25,31 @@ export function createTranslator(options = {}) {
   const client = new OpenAI(clientConfig);
 
   async function translateChunk(chunk, targetLanguage = 'Japanese') {
-    throw new Error('translateChunk not yet implemented');
+    const systemPrompt = `You are a professional translator. Translate the following English text to ${targetLanguage} while preserving markdown formatting.`;
+
+    try {
+      const response = await client.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: systemPrompt
+          },
+          {
+            role: 'user',
+            content: chunk
+          }
+        ]
+      });
+
+      if (!response.choices || response.choices.length === 0) {
+        throw new Error('Invalid response from OpenAI API');
+      }
+
+      return response.choices[0].message.content;
+    } catch (error) {
+      throw error;
+    }
   }
 
   return {

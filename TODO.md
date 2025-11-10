@@ -54,8 +54,8 @@ Project to translate a markdown book into Japanese using OpenAI's GPT-5 API, wit
   - Load API key from environment variables
   - Configure client options (timeout, retries)
 
-- [ ] Translation function
-  - Create `translateChunk()` function using GPT-5
+- [x] Translation function
+  - Create `translateChunk()` function using GPT-4o
   - Use chat completions API with translation prompt
   - Specify system prompt: "You are a professional translator. Translate the following English text to Japanese while preserving markdown formatting."
   - Return translated text
