@@ -1,0 +1,22 @@
+{
+  "name": "book-translate",
+  "version": "1.0.0",
+  "description": "Translate markdown books to Japanese using OpenAI GPT-5",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "translation",
+    "markdown",
+    "openai",
+    "japanese"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "openai": "^6.8.1"
+  }
+}
