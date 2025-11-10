@@ -76,7 +76,7 @@ Project to translate a markdown book into Japanese using OpenAI's GPT-5 API, wit
   - Track progress (current chunk / total chunks)
   - Estimate time remaining
 
-- [ ] Translation cache system (`src/cache.js`)
+- [x] Translation cache system (`src/cache.js`)
   - Save translated chunks to JSON file after each translation
   - Load existing cache on startup (resume capability)
   - Map original chunks to translations
