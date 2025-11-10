@@ -1,0 +1,76 @@
+#!/usr/bin/env node
+
+import { parseCliArgs } from './cli.js';
+import { readMarkdownFile } from './fileReader.js';
+import { chunkBySize } from './chunker.js';
+import { createTranslator } from './translator.js';
+import { translateDocument } from './translationEngine.js';
+import { assembleJapaneseOnly, assembleBilingual } from './assembler.js';
+import { join, basename, extname } from 'path';
+
+async function main() {
+  try {
+    const options = parseCliArgs(process.argv);
+
+    console.log('Translation Configuration:');
+    console.log(`  Input file: ${options.inputFile}`);
+    console.log(`  Output directory: ${options.outputDir}`);
+    console.log(`  Chunk size: ${options.chunkSize}`);
+    console.log(`  Model: ${options.model}`);
+    console.log();
+
+    console.log('Reading markdown file...');
+    const content = readMarkdownFile(options.inputFile);
+    console.log(`  File size: ${content.length} characters`);
+
+    console.log('Chunking document...');
+    const chunks = chunkBySize(content, options.chunkSize);
+    console.log(`  Total chunks: ${chunks.length}`);
+    console.log();
+
+    console.log('Initializing translator...');
+    const translator = createTranslator({ model: options.model });
+
+    console.log('Starting translation...');
+    const { translatedChunks } = await translateDocument(
+      chunks,
+      translator.translateChunk,
+      {
+        onProgress: (progress) => {
+          const etaSeconds = Math.round(progress.estimatedTimeRemaining / 1000);
+          console.log(
+            `  Progress: ${progress.current}/${progress.total} (${progress.percentComplete}%) - ETA: ${etaSeconds}s`
+          );
+        }
+      }
+    );
+    console.log('Translation complete!');
+    console.log();
+
+    const transformedChunks = translatedChunks.map(chunk => ({
+      ...chunk,
+      original: chunk.originalContent,
+      translation: chunk.translatedContent
+    }));
+
+    const fileBaseName = basename(options.inputFile, extname(options.inputFile));
+    const japaneseOutputPath = join(options.outputDir, `${fileBaseName}-japanese.md`);
+    const bilingualOutputPath = join(options.outputDir, `${fileBaseName}-bilingual.md`);
+
+    console.log('Assembling Japanese-only output...');
+    assembleJapaneseOnly(transformedChunks, japaneseOutputPath);
+    console.log(`  Saved: ${japaneseOutputPath}`);
+
+    console.log('Assembling bilingual output...');
+    assembleBilingual(transformedChunks, bilingualOutputPath);
+    console.log(`  Saved: ${bilingualOutputPath}`);
+
+    console.log();
+    console.log('✓ Translation completed successfully!');
+  } catch (error) {
+    console.error('Error:', error.message);
+    process.exit(1);
+  }
+}
+
+main();
