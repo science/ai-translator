@@ -24,6 +24,10 @@ export function createTranslator(options = {}) {
 
   const client = new OpenAI(clientConfig);
 
+  const model = options.model || 'gpt-4o';
+  const verbosity = options.verbosity || 'low';
+  const reasoningEffort = options.reasoningEffort || 'medium';
+
   function isRetryableError(error) {
     const retryableStatusCodes = [429, 500, 502, 503, 504];
     const retryableErrorCodes = ['ECONNRESET', 'ETIMEDOUT', 'ENOTFOUND', 'ECONNREFUSED'];
@@ -56,8 +60,8 @@ export function createTranslator(options = {}) {
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
-        const response = await client.chat.completions.create({
-          model: 'gpt-4o',
+        const requestParams = {
+          model: model,
           messages: [
             {
               role: 'system',
@@ -68,7 +72,14 @@ export function createTranslator(options = {}) {
               content: chunk
             }
           ]
-        });
+        };
+
+        if (model.startsWith('gpt-5')) {
+          requestParams.verbosity = verbosity;
+          requestParams.reasoning_effort = reasoningEffort;
+        }
+
+        const response = await client.chat.completions.create(requestParams);
 
         if (!response.choices || response.choices.length === 0) {
           throw new Error('Invalid response from OpenAI API');

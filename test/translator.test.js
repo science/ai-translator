@@ -176,7 +176,7 @@ describe('translator', () => {
       await expect(translator.translateChunk('Test')).rejects.toThrow('API rate limit exceeded');
     });
 
-    test('should use gpt-4o model', async () => {
+    test('should use gpt-4o model by default', async () => {
       mockCreate.mockResolvedValue({
         choices: [{
           message: {
@@ -190,6 +190,116 @@ describe('translator', () => {
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({
           model: 'gpt-4o'
+        })
+      );
+    });
+
+    test('should use custom model when specified', async () => {
+      const customTranslator = createTranslator({ model: 'gpt-5' });
+      customTranslator.client.chat.completions.create = mockCreate;
+
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: {
+            content: 'テスト'
+          }
+        }]
+      });
+
+      await customTranslator.translateChunk('Test');
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gpt-5'
+        })
+      );
+    });
+
+    test('should include verbosity and reasoning_effort for gpt-5 models', async () => {
+      const gpt5Translator = createTranslator({ model: 'gpt-5' });
+      gpt5Translator.client.chat.completions.create = mockCreate;
+
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: {
+            content: 'テスト'
+          }
+        }]
+      });
+
+      await gpt5Translator.translateChunk('Test');
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gpt-5',
+          verbosity: 'low',
+          reasoning_effort: 'medium'
+        })
+      );
+    });
+
+    test('should not include gpt-5 parameters for gpt-4o model', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: {
+            content: 'テスト'
+          }
+        }]
+      });
+
+      await translator.translateChunk('Test');
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      expect(callArgs).not.toHaveProperty('verbosity');
+      expect(callArgs).not.toHaveProperty('reasoning_effort');
+    });
+
+    test('should support custom verbosity and reasoning_effort', async () => {
+      const gpt5Translator = createTranslator({
+        model: 'gpt-5',
+        verbosity: 'high',
+        reasoningEffort: 'low'
+      });
+      gpt5Translator.client.chat.completions.create = mockCreate;
+
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: {
+            content: 'テスト'
+          }
+        }]
+      });
+
+      await gpt5Translator.translateChunk('Test');
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gpt-5',
+          verbosity: 'high',
+          reasoning_effort: 'low'
+        })
+      );
+    });
+
+    test('should include gpt-5 parameters for gpt-5-mini model', async () => {
+      const gpt5MiniTranslator = createTranslator({ model: 'gpt-5-mini' });
+      gpt5MiniTranslator.client.chat.completions.create = mockCreate;
+
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: {
+            content: 'テスト'
+          }
+        }]
+      });
+
+      await gpt5MiniTranslator.translateChunk('Test');
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gpt-5-mini',
+          verbosity: 'low',
+          reasoning_effort: 'medium'
         })
       );
     });
