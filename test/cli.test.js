@@ -16,7 +16,7 @@ describe('CLI', () => {
 
       expect(result.outputDir).toBe('output/');
       expect(result.chunkSize).toBe(4000);
-      expect(result.model).toBe('gpt-5');
+      expect(result.model).toBe('gpt-5-mini');
     });
 
     test('should parse output directory option', () => {
@@ -73,6 +73,35 @@ describe('CLI', () => {
       expect(result.inputFile).toBe('book.md');
       expect(result.model).toBe('gpt-4');
       expect(result.chunkSize).toBe(5000);
+    });
+
+    test('should parse rectify flag', () => {
+      const args = ['node', 'index.js', 'test.md', '--rectify'];
+      const result = parseCliArgs(args);
+
+      expect(result.rectify).toBe(true);
+    });
+
+    test('should default rectify to false', () => {
+      const args = ['node', 'index.js', 'test.md'];
+      const result = parseCliArgs(args);
+
+      expect(result.rectify).toBe(false);
+    });
+
+    test('should parse rectify flag with other options', () => {
+      const args = [
+        'node', 'index.js', 'broken.md',
+        '--rectify',
+        '--output-dir', 'cleaned/',
+        '--model', 'gpt-4o'
+      ];
+      const result = parseCliArgs(args);
+
+      expect(result.inputFile).toBe('broken.md');
+      expect(result.rectify).toBe(true);
+      expect(result.outputDir).toBe('cleaned/');
+      expect(result.model).toBe('gpt-4o');
     });
   });
 });

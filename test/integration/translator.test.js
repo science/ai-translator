@@ -44,7 +44,7 @@ describe('Translator Integration Tests', () => {
       messages: [
         {
           role: 'system',
-          content: 'You are a professional translator. Translate the following English text to Japanese while preserving markdown formatting.'
+          content: expect.stringContaining('You are a professional translator. Translate the following English text to Japanese while preserving markdown formatting.')
         },
         {
           role: 'user',

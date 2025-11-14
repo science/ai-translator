@@ -26,3 +26,12 @@ export function assembleBilingual(chunks, outputPath) {
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, bilingualContent, 'utf-8');
 }
+
+export function assembleRectified(chunks, outputPath) {
+  const rectifiedContent = chunks
+    .map(chunk => chunk.rectifiedContent)
+    .join('\n\n');
+
+  mkdirSync(dirname(outputPath), { recursive: true });
+  writeFileSync(outputPath, rectifiedContent, 'utf-8');
+}

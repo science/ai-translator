@@ -68,7 +68,7 @@ export function chunkBySize(content, maxChunkSize = 4000) {
 }
 
 function splitByParagraphs(content, maxSize) {
-  const paragraphs = content.split(/\n\n+/);
+  const paragraphs = content.split(/\r?\n\r?\n+/);
   const chunks = [];
   let currentChunk = [];
   let currentSize = 0;

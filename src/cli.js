@@ -5,6 +5,8 @@ export function parseCliArgs(args) {
   let outputDir = 'output/';
   let chunkSize = 4000;
   let model = 'gpt-5-mini';
+  let reasoningEffort = 'medium';
+  let rectify = false;
 
   for (let i = 0; i < cliArgs.length; i++) {
     const arg = cliArgs[i];
@@ -15,6 +17,10 @@ export function parseCliArgs(args) {
       chunkSize = parseInt(cliArgs[++i], 10);
     } else if (arg === '--model') {
       model = cliArgs[++i];
+    } else if (arg === '--reasoning-effort') {
+      reasoningEffort = cliArgs[++i];
+    } else if (arg === '--rectify') {
+      rectify = true;
     } else if (!arg.startsWith('--')) {
       inputFile = arg;
     }
@@ -28,6 +34,8 @@ export function parseCliArgs(args) {
     inputFile,
     outputDir,
     chunkSize,
-    model
+    model,
+    reasoningEffort,
+    rectify
   };
 }

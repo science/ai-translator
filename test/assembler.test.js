@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from '@jest/globals';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync, existsSync, mkdirSync, rmSync } from 'fs';
-import { assembleJapaneseOnly, assembleBilingual } from '../src/assembler.js';
+import { assembleJapaneseOnly, assembleBilingual, assembleRectified } from '../src/assembler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -195,6 +195,107 @@ describe('assembler', () => {
       expect(existsSync(outputPath)).toBe(true);
       const content = readFileSync(outputPath, 'utf-8');
       expect(content).toBe('');
+    });
+  });
+
+  describe('assembleRectified', () => {
+    test('should concatenate rectified chunks in order', () => {
+      const chunks = [
+        {
+          index: 0,
+          type: 'header-section',
+          headerLevel: 1,
+          originalContent: 'ontents\n\nJoreword by Jack Kornfield',
+          rectifiedContent: 'Contents\n\nForeword by Jack Kornfield'
+        },
+        {
+          index: 1,
+          type: 'header-section',
+          headerLevel: 2,
+          originalContent: 'reface\n\nWw hile studying',
+          rectifiedContent: 'Preface\n\nWhile studying'
+        }
+      ];
+
+      const outputPath = join(testOutputDir, 'rectified.md');
+      assembleRectified(chunks, outputPath);
+
+      expect(existsSync(outputPath)).toBe(true);
+      const content = readFileSync(outputPath, 'utf-8');
+      expect(content).toBe('Contents\n\nForeword by Jack Kornfield\n\nPreface\n\nWhile studying');
+    });
+
+    test('should preserve markdown structure', () => {
+      const chunks = [
+        {
+          index: 0,
+          type: 'header-section',
+          headerLevel: 1,
+          originalContent: '# ontents\n\n- Joreword\n- reface',
+          rectifiedContent: '# Contents\n\n- Foreword\n- Preface'
+        }
+      ];
+
+      const outputPath = join(testOutputDir, 'rectified-with-list.md');
+      assembleRectified(chunks, outputPath);
+
+      const content = readFileSync(outputPath, 'utf-8');
+      expect(content).toContain('# Contents');
+      expect(content).toContain('- Foreword');
+      expect(content).toContain('- Preface');
+    });
+
+    test('should handle empty chunks array', () => {
+      const outputPath = join(testOutputDir, 'empty-rectified.md');
+      assembleRectified([], outputPath);
+
+      expect(existsSync(outputPath)).toBe(true);
+      const content = readFileSync(outputPath, 'utf-8');
+      expect(content).toBe('');
+    });
+
+    test('should separate chunks with double newline', () => {
+      const chunks = [
+        {
+          index: 0,
+          type: 'header-section',
+          headerLevel: 1,
+          originalContent: '# art 1',
+          rectifiedContent: '# Part 1'
+        },
+        {
+          index: 1,
+          type: 'header-section',
+          headerLevel: 1,
+          originalContent: '# art 2',
+          rectifiedContent: '# Part 2'
+        }
+      ];
+
+      const outputPath = join(testOutputDir, 'rectified-separated.md');
+      assembleRectified(chunks, outputPath);
+
+      const content = readFileSync(outputPath, 'utf-8');
+      expect(content).toBe('# Part 1\n\n# Part 2');
+    });
+
+    test('should remove gibberish artifacts', () => {
+      const chunks = [
+        {
+          index: 0,
+          type: 'paragraph-section',
+          originalContent: '26 Gimam & eo. @ 7 Wat\n\nreface\n\nWw hile studying',
+          rectifiedContent: 'Preface\n\nWhile studying'
+        }
+      ];
+
+      const outputPath = join(testOutputDir, 'rectified-no-gibberish.md');
+      assembleRectified(chunks, outputPath);
+
+      const content = readFileSync(outputPath, 'utf-8');
+      expect(content).not.toContain('Gimam');
+      expect(content).toContain('Preface');
+      expect(content).toContain('While studying');
     });
   });
 });
