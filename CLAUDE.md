@@ -4,9 +4,23 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Node.js CLI tool for translating markdown books to Japanese using the OpenAI GPT API. The project is **fully implemented** and production-ready. It splits markdown files into chunks (preserving document structure), translates them via OpenAI, and outputs both Japanese-only and bilingual (alternating EN/JP) versions.
+This is a Node.js CLI tool for translating markdown books to Japanese using the OpenAI GPT API. The project is **fully implemented** and production-ready. It has three main capabilities:
 
-**NEW: Rectification Mode** - The tool now includes English-to-English document rectification to fix OCR errors and PDF conversion artifacts before translation. This uses the same chunking and processing architecture as translation but with a specialized system prompt for cleaning up broken text.
+1. **Translation**: Translates markdown files to Japanese, outputting both Japanese-only and bilingual (alternating EN/JP) versions
+2. **Rectification**: English-to-English document cleanup to fix OCR errors and PDF conversion artifacts
+3. **PDF-to-Markdown Conversion**: Converts PDF files directly to markdown format using pdf2md library
+
+**Typical Workflow:**
+```bash
+# Step 1: Convert PDF to markdown
+node src/index.js book.pdf --pdf-to-md --output-dir converted/
+
+# Step 2: Rectify the converted markdown to fix OCR errors
+node src/index.js converted/book.md --rectify --output-dir cleaned/
+
+# Step 3: Translate the cleaned version to Japanese
+node src/index.js cleaned/book-rectified.md --output-dir translated/
+```
 
 ## Commands
 
@@ -16,11 +30,19 @@ node src/index.js <input-file> [options]
 ```
 
 **Options:**
+- `--pdf-to-md`: Enable PDF-to-markdown conversion mode
 - `--rectify`: Enable rectification mode (English-to-English cleanup)
 - `--output-dir <path>`: Output directory (default: `output/`)
 - `--chunk-size <number>`: Max chunk size in characters (default: `4000`)
 - `--model <model-name>`: OpenAI model (default: `gpt-5-mini`)
 - `--reasoning-effort <low|medium|high>`: GPT-5 reasoning effort (default: `medium`)
+
+**Note:** `--pdf-to-md` and `--rectify` are mutually exclusive.
+
+**PDF-to-Markdown Example:**
+```bash
+node src/index.js book.pdf --pdf-to-md --output-dir converted/
+```
 
 **Translation Example:**
 ```bash
@@ -32,13 +54,16 @@ node src/index.js book.md --model gpt-4o --chunk-size 3000
 node src/index.js broken-book.md --rectify --output-dir cleaned/
 ```
 
-**Common Workflow:**
+**Complete Workflow (PDF → Rectify → Translate):**
 ```bash
-# Step 1: Rectify broken PDF-to-markdown conversion
-node src/index.js broken.md --rectify --output-dir cleaned/
+# Step 1: Convert PDF to markdown
+node src/index.js book.pdf --pdf-to-md --output-dir converted/
 
-# Step 2: Translate the cleaned version
-node src/index.js cleaned/broken-rectified.md --output-dir translated/
+# Step 2: Rectify the converted markdown
+node src/index.js converted/book.md --rectify --output-dir cleaned/
+
+# Step 3: Translate the cleaned version
+node src/index.js cleaned/book-rectified.md --output-dir translated/
 ```
 
 ### Testing
@@ -60,10 +85,13 @@ Processes test fixtures and outputs chunk analysis to JSON files for debugging.
 The codebase uses **ES modules** (`"type": "module"` in package.json). All imports must use `.js` extensions.
 
 **Key modules:**
-- `src/index.js`: CLI entry point, orchestrates entire pipeline (handles both translation and rectification modes)
-- `src/cli.js`: Parses command-line arguments (includes `--rectify` flag)
+- `src/index.js`: CLI entry point, orchestrates entire pipeline (handles translation, rectification, and PDF-to-markdown modes)
+- `src/cli.js`: Parses command-line arguments (includes `--rectify` and `--pdf-to-md` flags)
 - `src/fileReader.js`: Reads markdown files, handles file errors
-- `src/chunker.js`: Splits markdown into chunks by headers/paragraphs (shared by both modes)
+- `src/pdfReader.js`: Reads PDF files as buffers
+  - `readPdfFile(filePath)`: Returns PDF buffer for conversion
+  - Mirrors fileReader error handling pattern
+- `src/chunker.js`: Splits markdown into chunks by headers/paragraphs (used by translation and rectification modes)
   - `chunkBySize()`: Main chunking function, accepts content and maxChunkSize
   - Returns chunks with metadata: `{index, type, headerLevel, content}`
 - `src/translator.js`: OpenAI API wrapper for translation
@@ -72,19 +100,24 @@ The codebase uses **ES modules** (`"type": "module"` in package.json). All impor
   - GPT-5 models require `verbosity` and `reasoning_effort` parameters
 - `src/translationEngine.js`: Orchestrates translation loop
   - `translateDocument(chunks, translateChunkFn, options)`: Sequential processing with progress tracking
-- `src/rectifier.js`: OpenAI API wrapper for rectification (NEW)
+- `src/rectifier.js`: OpenAI API wrapper for rectification
   - `createRectifier(options)`: Factory function returning `{client, rectifyChunk}`
   - Same retry logic and error handling as translator
   - Specialized system prompt for fixing OCR errors and PDF artifacts
-- `src/rectificationEngine.js`: Orchestrates rectification loop (NEW)
+- `src/rectificationEngine.js`: Orchestrates rectification loop
   - `rectifyDocument(chunks, rectifyChunkFn, options)`: Sequential processing with progress tracking
   - Parallel structure to translationEngine for consistency
+- `src/pdfConverter.js`: PDF-to-markdown converter wrapper
+  - `createPdfConverter()`: Factory function returning `{convertToMarkdown}`
+  - Uses dynamic import to load CommonJS pdf2md library
+  - Handles conversion errors gracefully
 - `src/cache.js`: Translation cache system (currently unused but implemented)
   - `TranslationCache` class with `load()`, `set()`, `get()`, `save()` methods
-- `src/assembler.js`: Generates output files (supports both modes)
+- `src/assembler.js`: Generates output files (supports all modes)
   - `assembleJapaneseOnly()`: Creates Japanese-only markdown
   - `assembleBilingual()`: Creates alternating EN/JP with `---` separators
-  - `assembleRectified()`: Creates cleaned English markdown (NEW)
+  - `assembleRectified()`: Creates cleaned English markdown
+  - `assemblePdfToMarkdown()`: Creates markdown file from PDF conversion
 
 ### Translation Pipeline
 
@@ -96,7 +129,7 @@ The main flow in `src/index.js` (translation mode):
 5. Translate all chunks (`translateDocument`)
 6. Assemble outputs (`assembleJapaneseOnly`, `assembleBilingual`)
 
-### Rectification Pipeline (NEW)
+### Rectification Pipeline
 
 The main flow in `src/index.js` (rectification mode, enabled with `--rectify` flag):
 1. Parse CLI args (`parseCliArgs`) - detects `--rectify` flag
@@ -105,6 +138,21 @@ The main flow in `src/index.js` (rectification mode, enabled with `--rectify` fl
 4. Create rectifier (`createRectifier`)
 5. Rectify all chunks (`rectifyDocument`)
 6. Assemble output (`assembleRectified`)
+
+### PDF-to-Markdown Pipeline
+
+The main flow in `src/index.js` (PDF conversion mode, enabled with `--pdf-to-md` flag):
+1. Parse CLI args (`parseCliArgs`) - detects `--pdf-to-md` flag
+2. Read PDF file as buffer (`readPdfFile`)
+3. Create converter (`createPdfConverter`)
+4. Convert PDF to markdown (`convertToMarkdown`)
+5. Assemble output (`assemblePdfToMarkdown`)
+
+**Key differences from translation/rectification:**
+- No chunking required (converts entire PDF at once)
+- No OpenAI API calls (uses pdf2md library locally)
+- No retry logic or sequential processing
+- Much simpler and faster pipeline
 
 ### Chunking Strategy
 
@@ -145,26 +193,39 @@ The rectifier in `src/rectifier.js` uses a specialized system prompt emphasizing
 
 - **Framework**: Jest with `--experimental-vm-modules` flag
 - **Location**: `test/` directory
-- **Fixtures**: Test markdown files in `test/fixtures/`
-  - Standard fixtures for translation testing
+- **Fixtures**: Test files in `test/fixtures/`
+  - Standard markdown fixtures for translation testing
   - Broken document fixtures for rectification testing (e.g., `broken-missing-letters.md`, `broken-gibberish.md`)
+  - PDF fixture for PDF conversion testing (`sample.pdf`)
 - **Test types**:
-  - Unit tests for each module (e.g., `test/chunker.test.js`, `test/rectifier.test.js`)
-  - Integration tests in `test/integration/` for full pipeline and translator
-  - **133 total tests** including 21 new tests for rectification feature
+  - Unit tests for each module (e.g., `test/chunker.test.js`, `test/rectifier.test.js`, `test/pdfReader.test.js`)
+  - Integration tests in `test/integration/` for full pipelines
+  - **153 total tests** (133 original + 20 for PDF-to-markdown feature)
 - Tests use `fileURLToPath` and `dirname` for ES module path resolution
 
-**Test Coverage (NEW):**
-- `test/rectifier.test.js`: 6 tests for rectifier module
-- `test/rectificationEngine.test.js`: 7 tests for rectification engine
-- `test/assembler.test.js`: Added 5 tests for `assembleRectified()`
-- `test/cli.test.js`: Added 3 tests for `--rectify` flag
+**Test Coverage:**
+- Rectification feature (21 tests):
+  - `test/rectifier.test.js`: 6 tests for rectifier module
+  - `test/rectificationEngine.test.js`: 7 tests for rectification engine
+  - `test/assembler.test.js`: 5 tests for `assembleRectified()`
+  - `test/cli.test.js`: 3 tests for `--rectify` flag
+- PDF-to-markdown feature (20 tests):
+  - `test/pdfReader.test.js`: 4 tests for PDF file reading
+  - `test/pdfConverter.test.js`: 4 tests for PDF conversion
+  - `test/assembler.test.js`: 5 tests for `assemblePdfToMarkdown()`
+  - `test/cli.test.js`: 4 tests for `--pdf-to-md` flag
+  - `test/integration/pdfToMarkdown.test.js`: 3 integration tests
 
 ## Environment
 
 - **API Key**: Set `OPENAI_API_KEY` in `.env` file (see `.env.example`)
-- **Output**: Translated files written to `output/` directory (default)
-- **Dependencies**: `openai` for API client, `dotenv` for env vars
+  - Required for translation and rectification modes
+  - Not required for PDF-to-markdown conversion
+- **Output**: Output files written to `output/` directory (default)
+- **Dependencies**:
+  - `openai` - OpenAI API client for translation and rectification
+  - `dotenv` - Environment variable management
+  - `@opendocsg/pdf2md` - PDF-to-markdown conversion library
 
 ## Important Notes
 
@@ -212,3 +273,60 @@ The rectifier is trained to recognize and fix:
 - **PDF gibberish**: Removes random character strings like `26 Gimam & eo. @ 7 Wat`
 - **Code block artifacts**: Removes OCR-generated ` ``` ` markers that aren't actual code blocks
 - **Hyphenation issues**: Rejoins words split across line breaks
+
+## PDF-to-Markdown Architecture
+
+### DRY Principles Maintained
+The PDF-to-markdown feature was built following strict DRY (Don't Repeat Yourself) principles:
+
+**Reused Components:**
+- `assembler.js` - Added `assemblePdfToMarkdown()` following same pattern as other assembler functions
+- Error handling patterns from existing modules
+- CLI parsing pattern from `cli.js`
+- File reading pattern from `fileReader.js` (adapted for PDF buffers)
+
+**New Components (Minimal Architecture):**
+- `pdfReader.js` - Mirrors `fileReader.js` structure but returns Buffer instead of string
+- `pdfConverter.js` - Wraps pdf2md library with factory function pattern like `translator.js`
+- Uses dynamic `import()` to load CommonJS pdf2md library in ES module environment
+
+**Pipeline Branching:**
+- `index.js` checks `options.pdfToMd` flag and branches to PDF conversion pipeline
+- PDF pipeline is simplest of the three: read → convert → assemble
+- No chunking, no AI processing, no retry logic needed
+- Consistent logging and progress reporting with other modes
+
+### Use Cases for PDF-to-Markdown
+
+1. **Pre-Rectification Step**: Convert PDFs to markdown before applying rectification
+2. **Book Digitization**: Extract text from PDF books for translation workflow
+3. **Document Processing**: Convert PDF documents to editable markdown format
+4. **Complete Workflow**: PDF → Markdown → Rectification → Translation
+
+### Technical Implementation
+
+**ES Modules vs CommonJS:**
+The `@opendocsg/pdf2md` library is CommonJS, but this project uses ES modules. Solution:
+```javascript
+export async function createPdfConverter() {
+  const { default: pdf2md } = await import('@opendocsg/pdf2md');
+
+  const convertToMarkdown = async (pdfBuffer) => {
+    const markdown = await pdf2md(pdfBuffer);
+    return markdown;
+  };
+
+  return { convertToMarkdown };
+}
+```
+
+**Performance:**
+- No OpenAI API calls = No API costs
+- Local JavaScript processing only
+- Fast conversion (seconds for typical books)
+- No rate limiting or retry logic needed
+
+**Limitations:**
+- PDF conversion quality varies based on PDF source (text-based vs scanned)
+- OCR errors from scanned PDFs require rectification
+- Users should use `--rectify` after `--pdf-to-md` for best results

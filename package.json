@@ -16,6 +16,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@opendocsg/pdf2md": "^0.2.2",
     "dotenv": "^17.2.3",
     "openai": "^6.8.1"
   },

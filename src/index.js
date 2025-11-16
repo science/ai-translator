@@ -2,19 +2,43 @@
 
 import { parseCliArgs } from './cli.js';
 import { readMarkdownFile } from './fileReader.js';
+import { readPdfFile } from './pdfReader.js';
 import { chunkBySize } from './chunker.js';
 import { createTranslator } from './translator.js';
 import { createRectifier } from './rectifier.js';
+import { createPdfConverter } from './pdfConverter.js';
 import { translateDocument } from './translationEngine.js';
 import { rectifyDocument } from './rectificationEngine.js';
-import { assembleJapaneseOnly, assembleBilingual, assembleRectified } from './assembler.js';
+import { assembleJapaneseOnly, assembleBilingual, assembleRectified, assemblePdfToMarkdown } from './assembler.js';
 import { join, basename, extname } from 'path';
 
 async function main() {
   try {
     const options = parseCliArgs(process.argv);
 
-    if (options.rectify) {
+    if (options.pdfToMd) {
+      console.log('PDF-to-Markdown Conversion Configuration:');
+      console.log(`  Input file: ${options.inputFile}`);
+      console.log(`  Output directory: ${options.outputDir}`);
+      console.log();
+
+      console.log('Reading PDF file...');
+      const pdfBuffer = await readPdfFile(options.inputFile);
+      console.log(`  PDF size: ${pdfBuffer.length} bytes`);
+
+      console.log('Converting PDF to markdown...');
+      const converter = await createPdfConverter();
+      const markdown = await converter.convertToMarkdown(pdfBuffer);
+      console.log(`  Converted to ${markdown.length} characters`);
+      console.log();
+
+      console.log('Writing output file...');
+      const outputPath = assemblePdfToMarkdown(markdown, options.outputDir, options.inputFile);
+      console.log(`  Saved: ${outputPath}`);
+
+      console.log();
+      console.log('✓ PDF conversion completed successfully!');
+    } else if (options.rectify) {
       console.log('Rectification Configuration:');
       console.log(`  Input file: ${options.inputFile}`);
       console.log(`  Output directory: ${options.outputDir}`);

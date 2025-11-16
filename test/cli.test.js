@@ -103,5 +103,38 @@ describe('CLI', () => {
       expect(result.outputDir).toBe('cleaned/');
       expect(result.model).toBe('gpt-4o');
     });
+
+    test('should parse pdf-to-md flag', () => {
+      const args = ['node', 'index.js', 'test.pdf', '--pdf-to-md'];
+      const result = parseCliArgs(args);
+
+      expect(result.pdfToMd).toBe(true);
+    });
+
+    test('should default pdfToMd to false', () => {
+      const args = ['node', 'index.js', 'test.md'];
+      const result = parseCliArgs(args);
+
+      expect(result.pdfToMd).toBe(false);
+    });
+
+    test('should parse pdf-to-md flag with other options', () => {
+      const args = [
+        'node', 'index.js', 'book.pdf',
+        '--pdf-to-md',
+        '--output-dir', 'converted/'
+      ];
+      const result = parseCliArgs(args);
+
+      expect(result.inputFile).toBe('book.pdf');
+      expect(result.pdfToMd).toBe(true);
+      expect(result.outputDir).toBe('converted/');
+    });
+
+    test('should throw error when both rectify and pdf-to-md flags are used', () => {
+      const args = ['node', 'index.js', 'test.pdf', '--rectify', '--pdf-to-md'];
+
+      expect(() => parseCliArgs(args)).toThrow('Cannot use --rectify and --pdf-to-md flags together');
+    });
   });
 });

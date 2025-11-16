@@ -7,6 +7,7 @@ export function parseCliArgs(args) {
   let model = 'gpt-5-mini';
   let reasoningEffort = 'medium';
   let rectify = false;
+  let pdfToMd = false;
 
   for (let i = 0; i < cliArgs.length; i++) {
     const arg = cliArgs[i];
@@ -21,6 +22,8 @@ export function parseCliArgs(args) {
       reasoningEffort = cliArgs[++i];
     } else if (arg === '--rectify') {
       rectify = true;
+    } else if (arg === '--pdf-to-md') {
+      pdfToMd = true;
     } else if (!arg.startsWith('--')) {
       inputFile = arg;
     }
@@ -30,12 +33,17 @@ export function parseCliArgs(args) {
     throw new Error('Input file path is required');
   }
 
+  if (rectify && pdfToMd) {
+    throw new Error('Cannot use --rectify and --pdf-to-md flags together');
+  }
+
   return {
     inputFile,
     outputDir,
     chunkSize,
     model,
     reasoningEffort,
-    rectify
+    rectify,
+    pdfToMd
   };
 }

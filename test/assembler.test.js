@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from '@jest/globals';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync, existsSync, mkdirSync, rmSync } from 'fs';
-import { assembleJapaneseOnly, assembleBilingual, assembleRectified } from '../src/assembler.js';
+import { assembleJapaneseOnly, assembleBilingual, assembleRectified, assemblePdfToMarkdown } from '../src/assembler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -296,6 +296,64 @@ describe('assembler', () => {
       expect(content).not.toContain('Gimam');
       expect(content).toContain('Preface');
       expect(content).toContain('While studying');
+    });
+  });
+
+  describe('assemblePdfToMarkdown', () => {
+    test('should write markdown content to output file', () => {
+      const markdownContent = '# Hello World\n\nThis is a test PDF conversion.';
+      const outputDir = testOutputDir;
+      const inputFilePath = 'book.pdf';
+
+      const outputPath = assemblePdfToMarkdown(markdownContent, outputDir, inputFilePath);
+
+      expect(existsSync(outputPath)).toBe(true);
+      const content = readFileSync(outputPath, 'utf-8');
+      expect(content).toBe(markdownContent);
+    });
+
+    test('should generate correct output filename from PDF input', () => {
+      const markdownContent = '# Test';
+      const outputDir = testOutputDir;
+      const inputFilePath = 'my-book.pdf';
+
+      const outputPath = assemblePdfToMarkdown(markdownContent, outputDir, inputFilePath);
+
+      expect(outputPath).toContain('my-book.md');
+      expect(outputPath).not.toContain('.pdf');
+    });
+
+    test('should handle nested input paths', () => {
+      const markdownContent = '# Chapter 1';
+      const outputDir = testOutputDir;
+      const inputFilePath = 'path/to/book.pdf';
+
+      const outputPath = assemblePdfToMarkdown(markdownContent, outputDir, inputFilePath);
+
+      expect(existsSync(outputPath)).toBe(true);
+      expect(outputPath).toContain('book.md');
+    });
+
+    test('should return the output file path', () => {
+      const markdownContent = '# Test Content';
+      const outputDir = testOutputDir;
+      const inputFilePath = 'sample.pdf';
+
+      const outputPath = assemblePdfToMarkdown(markdownContent, outputDir, inputFilePath);
+
+      expect(typeof outputPath).toBe('string');
+      expect(outputPath).toMatch(/sample\.md$/);
+    });
+
+    test('should create output directory if it does not exist', () => {
+      const markdownContent = '# Content';
+      const nestedOutputDir = join(testOutputDir, 'nested', 'dir');
+      const inputFilePath = 'book.pdf';
+
+      const outputPath = assemblePdfToMarkdown(markdownContent, nestedOutputDir, inputFilePath);
+
+      expect(existsSync(outputPath)).toBe(true);
+      expect(existsSync(nestedOutputDir)).toBe(true);
     });
   });
 });

@@ -1,5 +1,5 @@
 import { writeFileSync, mkdirSync } from 'fs';
-import { dirname } from 'path';
+import { dirname, basename, join } from 'path';
 
 export function assembleJapaneseOnly(chunks, outputPath) {
   const translatedContent = chunks
@@ -34,4 +34,15 @@ export function assembleRectified(chunks, outputPath) {
 
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, rectifiedContent, 'utf-8');
+}
+
+export function assemblePdfToMarkdown(markdownContent, outputDir, inputFilePath) {
+  const inputBasename = basename(inputFilePath, '.pdf');
+  const outputFilename = `${inputBasename}.md`;
+  const outputPath = join(outputDir, outputFilename);
+
+  mkdirSync(outputDir, { recursive: true });
+  writeFileSync(outputPath, markdownContent, 'utf-8');
+
+  return outputPath;
 }
