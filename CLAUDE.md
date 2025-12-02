@@ -22,6 +22,109 @@ node src/index.js converted/book.md --rectify --output-dir cleaned/
 node src/index.js cleaned/book-rectified.md --output-dir translated/
 ```
 
+## Development Methodology: TDD Red/Green
+
+**All new functionality MUST follow Test-Driven Development (TDD) using the red/green methodology.** Work in small, incremental steps—never write large amounts of implementation code without corresponding tests.
+
+### The TDD Cycle
+
+1. **RED: Write a failing test first**
+   - Write a small, focused test for the next piece of functionality
+   - Run the test to **prove it fails** (this confirms the test is valid)
+   - If the test passes immediately, the test is wrong or the functionality already exists
+
+2. **GREEN: Write minimal code to pass**
+   - Implement just enough code to make the failing test pass
+   - Run the test to **prove it passes**
+   - Do not add extra functionality beyond what the test requires
+
+3. **REFACTOR: Clean up (optional)**
+   - Improve code structure while keeping tests green
+   - Run tests again to confirm nothing broke
+
+4. **REPEAT: Move forward incrementally**
+   - Add the next small test, repeat the cycle
+   - Build functionality piece by piece, always with test coverage
+
+### Test Types by Context
+
+**CLI Tool (root project):** Use Jest unit tests
+```bash
+# Write test in test/*.test.js, then run:
+npm test -- --testPathPattern=myFeature
+```
+
+**Web App (`web-app/`):** Use Vitest for unit tests, Playwright for browser tests
+```bash
+cd web-app
+npm run test:unit              # Vitest unit tests
+npm run test:e2e               # Playwright browser tests
+npm run test:e2e:ui            # Playwright with interactive UI
+```
+
+**When to use each:**
+- **Unit tests (Jest/Vitest)**: Pure functions, data transformations, business logic, module APIs
+- **Playwright browser tests**: User interactions, page navigation, form submissions, visual behavior, component integration
+
+### Debugging Failures (When Things Go Red)
+
+When implementation work causes test failures or unexpected bugs:
+
+1. **Add diagnostic logging**
+   ```javascript
+   console.log('DEBUG: value =', value);
+   console.log('DEBUG: state before =', JSON.stringify(state, null, 2));
+   ```
+
+2. **Write a "proving" test that isolates the bug**
+   - Create a minimal test case that reproduces the failure
+   - Run it to confirm it fails (proves the bug exists)
+   - This test becomes part of your regression suite
+
+3. **Identify root cause**
+   - Use the failing test + console output to trace the issue
+   - Narrow down to the specific line/condition causing the problem
+
+4. **Fix and verify**
+   - Implement the fix
+   - Run the proving test to confirm it now passes
+   - Run full test suite to ensure no regressions
+
+### Example TDD Workflow
+
+Adding a new CLI flag `--verbose`:
+
+```bash
+# Step 1: Write failing test
+# In test/cli.test.js, add:
+test('parses --verbose flag', () => {
+  const result = parseCliArgs(['input.md', '--verbose']);
+  expect(result.verbose).toBe(true);
+});
+
+# Step 2: Run to prove failure
+npm test -- --testPathPattern=cli
+# ✗ FAIL - result.verbose is undefined (RED)
+
+# Step 3: Implement minimal code in src/cli.js
+# Add verbose flag parsing
+
+# Step 4: Run to prove success
+npm test -- --testPathPattern=cli
+# ✓ PASS (GREEN)
+
+# Step 5: Next test - verbose affects output
+# Write test, prove failure, implement, prove success...
+```
+
+### Key Principles
+
+- **Never skip the RED step** - Running a test before implementation proves it can fail
+- **Small increments** - Each test should cover one small behavior, not entire features
+- **Tests are documentation** - They show exactly what the code should do
+- **Failing tests are information** - They tell you precisely what's broken
+- **Console debugging is temporary** - Remove `console.log` statements after fixing issues
+
 ## Commands
 
 ### Running the CLI
@@ -54,21 +157,12 @@ node src/index.js book.md --model gpt-4o --chunk-size 3000
 node src/index.js broken-book.md --rectify --output-dir cleaned/
 ```
 
-**Complete Workflow (PDF → Rectify → Translate):**
-```bash
-# Step 1: Convert PDF to markdown
-node src/index.js book.pdf --pdf-to-md --output-dir converted/
-
-# Step 2: Rectify the converted markdown
-node src/index.js converted/book.md --rectify --output-dir cleaned/
-
-# Step 3: Translate the cleaned version
-node src/index.js cleaned/book-rectified.md --output-dir translated/
-```
-
 ### Testing
 ```bash
-npm test
+npm test                                    # Run all tests
+npm test -- --testPathPattern=chunker      # Run single test file by name
+npm test -- test/chunker.test.js           # Run single test file by path
+npm test -- --testNamePattern="splits"     # Run tests matching pattern
 ```
 Runs Jest tests using experimental VM modules (required for ES modules).
 
@@ -77,6 +171,27 @@ Runs Jest tests using experimental VM modules (required for ES modules).
 node scripts/inspectChunks.js
 ```
 Processes test fixtures and outputs chunk analysis to JSON files for debugging.
+
+## Web App
+
+A browser-based interface is available in `web-app/` built with SvelteKit 2, Svelte 5, and Tailwind CSS 4.
+
+```bash
+cd web-app
+npm install
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run check        # TypeScript/Svelte type checking
+npm test             # Run unit tests (vitest) and e2e tests (playwright)
+```
+
+**Routes:**
+- `/` - Home/landing page
+- `/convert` - PDF-to-markdown conversion
+- `/cleanup` - Document rectification
+- `/translate` - Translation interface
+- `/documents` - Document management
+- `/settings` - Configuration
 
 ## Architecture
 
@@ -171,7 +286,7 @@ The translator in `src/translator.js` uses a detailed system prompt emphasizing:
 - No meta-instructions or labels in output (pure translation only)
 - Exceptions for proper nouns and established loanwords only
 
-### Rectification System Prompt (NEW)
+### Rectification System Prompt
 
 The rectifier in `src/rectifier.js` uses a specialized system prompt emphasizing:
 - **Fix OCR errors**: Correct missing/wrong letters (e.g., "ontents" → "Contents", "tae" → "The", "Ww hile" → "While")
@@ -235,7 +350,7 @@ The rectifier in `src/rectifier.js` uses a specialized system prompt emphasizing
 - **ES modules**: All imports must include `.js` extension
 - **Timing**: GPT-5 models are slower (~20-25s per chunk) due to extended reasoning; GPT-4o is faster (~3-5s per chunk)
 
-## Rectification Architecture (NEW)
+## Rectification Architecture
 
 ### DRY Principles Maintained
 The rectification feature was built following strict DRY (Don't Repeat Yourself) principles:

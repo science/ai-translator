@@ -1,5 +1,125 @@
 <script lang="ts">
-	// Convert PDF to Markdown page
+	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
+	import {
+		type StoredDocument,
+		getAllDocuments,
+		getDocument,
+		saveDocument,
+		blobToBase64,
+		generateDocumentId
+	} from '$lib/storage';
+
+	// Display-friendly version for the list
+	interface DocumentListItem {
+		id: string;
+		name: string;
+		type: 'pdf' | 'markdown' | 'text';
+		size: number;
+		uploadedAt: string;
+	}
+
+	let documents = $state<DocumentListItem[]>([]);
+	let selectedPdfId = $state('');
+	let isConverting = $state(false);
+	let convertedMarkdown = $state('');
+	let error = $state('');
+
+	onMount(async () => {
+		if (browser) {
+			await loadDocuments();
+		}
+	});
+
+	async function loadDocuments() {
+		const docs = await getAllDocuments();
+		documents = docs.map((doc) => ({
+			id: doc.id,
+			name: doc.name,
+			type: doc.type,
+			size: doc.size,
+			uploadedAt: doc.uploadedAt
+		}));
+	}
+
+	// Filter to only show PDF documents
+	let pdfDocuments = $derived(documents.filter((doc) => doc.type === 'pdf'));
+
+	// Get the selected PDF info (not full document with content)
+	let selectedPdfInfo = $derived(documents.find((doc) => doc.id === selectedPdfId));
+
+	async function handleConvert() {
+		if (!selectedPdfInfo) return;
+
+		isConverting = true;
+		error = '';
+		convertedMarkdown = '';
+
+		try {
+			// Fetch the full document with content from IndexedDB
+			const selectedPdf = await getDocument(selectedPdfId);
+			if (!selectedPdf) {
+				throw new Error('Document not found');
+			}
+
+			// Convert Blob to base64 for API call
+			let base64Content: string;
+			if (selectedPdf.content instanceof Blob) {
+				base64Content = await blobToBase64(selectedPdf.content);
+			} else {
+				// Fallback for migrated content that might still be base64 string
+				base64Content = selectedPdf.content;
+			}
+
+			const response = await fetch('/api/convert', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					content: base64Content,
+					filename: selectedPdf.name
+				})
+			});
+
+			const result = await response.json();
+
+			if (!response.ok) {
+				throw new Error(result.error || 'Conversion failed');
+			}
+
+			convertedMarkdown = result.markdown;
+
+			// Store the converted document in IndexedDB
+			const baseName = selectedPdf.name.replace(/\.pdf$/i, '');
+			const newDoc: StoredDocument = {
+				id: generateDocumentId(),
+				name: `${baseName}.md`,
+				type: 'markdown',
+				content: result.markdown,
+				size: new Blob([result.markdown]).size,
+				uploadedAt: new Date().toISOString()
+			};
+
+			await saveDocument(newDoc);
+
+			// Update local display list
+			documents = [
+				...documents,
+				{
+					id: newDoc.id,
+					name: newDoc.name,
+					type: newDoc.type,
+					size: newDoc.size,
+					uploadedAt: newDoc.uploadedAt
+				}
+			];
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'An error occurred';
+		} finally {
+			isConverting = false;
+		}
+	}
 </script>
 
 <div class="max-w-4xl">
@@ -9,15 +129,46 @@
 		<label class="block text-sm font-medium text-gray-700 mb-2">
 			Select PDF to convert:
 		</label>
-		<select class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-			<option value="">No PDFs available</option>
+		<select
+			bind:value={selectedPdfId}
+			disabled={isConverting}
+			class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+		>
+			{#if pdfDocuments.length === 0}
+				<option value="">No PDFs available</option>
+			{:else}
+				<option value="">Select a PDF...</option>
+				{#each pdfDocuments as pdf (pdf.id)}
+					<option value={pdf.id}>{pdf.name}</option>
+				{/each}
+			{/if}
 		</select>
 
 		<button
+			onclick={handleConvert}
 			class="mt-4 w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-			disabled
+			disabled={!selectedPdfId || isConverting}
 		>
-			Convert to Markdown
+			{#if isConverting}
+				Converting...
+			{:else}
+				Convert to Markdown
+			{/if}
 		</button>
 	</div>
+
+	{#if error}
+		<div class="mt-6 bg-red-50 border border-red-200 rounded-lg p-4">
+			<p class="text-red-700">{error}</p>
+		</div>
+	{/if}
+
+	{#if convertedMarkdown}
+		<div class="mt-6 bg-white rounded-lg border border-gray-200 p-6">
+			<h2 class="text-lg font-semibold text-gray-900 mb-4">Converted Markdown</h2>
+			<div class="prose prose-sm max-w-none bg-gray-50 rounded-lg p-4 overflow-auto max-h-96">
+				<pre class="whitespace-pre-wrap text-sm text-gray-800">{convertedMarkdown}</pre>
+			</div>
+		</div>
+	{/if}
 </div>

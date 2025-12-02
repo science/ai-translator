@@ -1,41 +1,53 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
+	import {
+		type StoredDocument,
+		getAllDocuments,
+		saveDocument,
+		deleteDocument as deleteDocFromDB,
+		migrateFromLocalStorage,
+		generateDocumentId,
+		requestPersistentStorage
+	} from '$lib/storage';
 
-	interface StoredDocument {
+	// Display-friendly version of StoredDocument (content not needed for list)
+	interface DocumentListItem {
 		id: string;
 		name: string;
 		type: 'pdf' | 'markdown' | 'text';
-		content: string;
 		size: number;
 		uploadedAt: string;
 	}
 
-	let documents = $state<StoredDocument[]>([]);
+	let documents = $state<DocumentListItem[]>([]);
 	let isDragging = $state(false);
 	let fileInput: HTMLInputElement;
+	let error = $state('');
 
-	onMount(() => {
-		loadDocuments();
+	onMount(async () => {
+		if (browser) {
+			// Migrate any existing localStorage data to IndexedDB
+			await migrateFromLocalStorage();
+			// Request persistent storage (browser may auto-approve)
+			await requestPersistentStorage();
+			// Load documents from IndexedDB
+			await loadDocuments();
+		}
 	});
 
-	function loadDocuments() {
+	async function loadDocuments() {
 		if (browser) {
-			const stored = localStorage.getItem('documents');
-			if (stored) {
-				documents = JSON.parse(stored);
-			}
+			const docs = await getAllDocuments();
+			// Map to display-friendly format (exclude content for performance)
+			documents = docs.map((doc) => ({
+				id: doc.id,
+				name: doc.name,
+				type: doc.type,
+				size: doc.size,
+				uploadedAt: doc.uploadedAt
+			}));
 		}
-	}
-
-	function saveDocuments() {
-		if (browser) {
-			localStorage.setItem('documents', JSON.stringify(documents));
-		}
-	}
-
-	function generateId(): string {
-		return `doc_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 	}
 
 	function getFileType(filename: string): 'pdf' | 'markdown' | 'text' {
@@ -51,43 +63,6 @@
 		return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 	}
 
-	async function handleFiles(files: FileList | null) {
-		if (!files) return;
-
-		for (const file of Array.from(files)) {
-			// Read file content
-			const content = await readFileContent(file);
-
-			const doc: StoredDocument = {
-				id: generateId(),
-				name: file.name,
-				type: getFileType(file.name),
-				content: content,
-				size: file.size,
-				uploadedAt: new Date().toISOString()
-			};
-
-			documents = [...documents, doc];
-		}
-
-		saveDocuments();
-	}
-
-	function arrayBufferToBase64(buffer: ArrayBuffer): string {
-		// Process in chunks to avoid "Maximum call stack size exceeded" error
-		// The spread operator (...) fails for large arrays (>100KB)
-		const bytes = new Uint8Array(buffer);
-		const chunkSize = 8192; // Process 8KB at a time
-		let binary = '';
-
-		for (let i = 0; i < bytes.length; i += chunkSize) {
-			const chunk = bytes.subarray(i, i + chunkSize);
-			binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
-		}
-
-		return btoa(binary);
-	}
-
 	function isPdfFile(file: File): boolean {
 		// Check both MIME type and extension for reliability
 		if (file.type === 'application/pdf') return true;
@@ -95,27 +70,60 @@
 		return ext === 'pdf';
 	}
 
-	async function readFileContent(file: File): Promise<string> {
-		return new Promise((resolve, reject) => {
-			const reader = new FileReader();
-			reader.onload = (e) => {
-				if (isPdfFile(file)) {
-					// For PDFs, store as base64
-					const result = e.target?.result as ArrayBuffer;
-					const base64 = arrayBufferToBase64(result);
-					resolve(base64);
-				} else {
-					resolve(e.target?.result as string);
-				}
-			};
-			reader.onerror = reject;
+	async function handleFiles(files: FileList | null) {
+		if (!files) return;
 
-			if (isPdfFile(file)) {
-				reader.readAsArrayBuffer(file);
-			} else {
-				reader.readAsText(file);
+		error = ''; // Clear any previous error
+
+		for (const file of Array.from(files)) {
+			try {
+				// Read file content - PDFs as Blob, text as string
+				const content = await readFileContent(file);
+
+				const doc: StoredDocument = {
+					id: generateDocumentId(),
+					name: file.name,
+					type: getFileType(file.name),
+					content: content,
+					size: file.size,
+					uploadedAt: new Date().toISOString()
+				};
+
+				// Save to IndexedDB
+				await saveDocument(doc);
+
+				// Update local display list
+				documents = [
+					...documents,
+					{
+						id: doc.id,
+						name: doc.name,
+						type: doc.type,
+						size: doc.size,
+						uploadedAt: doc.uploadedAt
+					}
+				];
+			} catch (err) {
+				const fileSizeMB = (file.size / (1024 * 1024)).toFixed(1);
+				error = `Failed to save "${file.name}" (${fileSizeMB} MB). ${err instanceof Error ? err.message : 'Unknown error'}`;
+				return; // Stop processing further files
 			}
-		});
+		}
+	}
+
+	async function readFileContent(file: File): Promise<Blob | string> {
+		if (isPdfFile(file)) {
+			// Store PDFs directly as Blobs (no base64 encoding!)
+			return file;
+		} else {
+			// Read text files as strings
+			return new Promise((resolve, reject) => {
+				const reader = new FileReader();
+				reader.onload = (e) => resolve(e.target?.result as string);
+				reader.onerror = reject;
+				reader.readAsText(file);
+			});
+		}
 	}
 
 	function handleDrop(event: DragEvent) {
@@ -140,9 +148,9 @@
 		input.value = '';
 	}
 
-	function deleteDocument(id: string) {
+	async function deleteDocument(id: string) {
+		await deleteDocFromDB(id);
 		documents = documents.filter((doc) => doc.id !== id);
-		saveDocuments();
 	}
 
 	function formatDate(isoString: string): string {
@@ -163,6 +171,12 @@
 
 <div class="max-w-4xl">
 	<h1 class="text-2xl font-bold text-gray-900 mb-6">Upload Document</h1>
+
+	{#if error}
+		<div data-testid="upload-error" class="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+			<p class="text-red-700">{error}</p>
+		</div>
+	{/if}
 
 	<div class="bg-white rounded-lg border border-gray-200 p-8">
 		<!-- Dropzone -->
