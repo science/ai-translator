@@ -149,7 +149,9 @@
 				type: 'markdown',
 				content: cleanedMarkdown,
 				size: new Blob([cleanedMarkdown]).size,
-				uploadedAt: new Date().toISOString()
+				uploadedAt: new Date().toISOString(),
+				phase: 'cleaned',
+				sourceDocumentId: selectedDoc.id
 			};
 
 			await saveDocument(newDoc);

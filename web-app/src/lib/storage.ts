@@ -4,6 +4,8 @@ const DB_NAME = 'book-translate-db';
 const DB_VERSION = 1;
 const STORE_NAME = 'documents';
 
+export type DocumentPhase = 'uploaded' | 'converted' | 'cleaned' | 'translated';
+
 export interface StoredDocument {
 	id: string;
 	name: string;
@@ -11,6 +13,8 @@ export interface StoredDocument {
 	content: Blob | string; // Blob for PDFs, string for text/markdown
 	size: number;
 	uploadedAt: string;
+	phase: DocumentPhase;
+	sourceDocumentId?: string; // Reference to original document (for converted/cleaned/translated)
 }
 
 let dbPromise: Promise<IDBPDatabase> | null = null;

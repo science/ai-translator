@@ -143,7 +143,9 @@
 				type: 'markdown',
 				content: convertedMarkdown,
 				size: new Blob([convertedMarkdown]).size,
-				uploadedAt: new Date().toISOString()
+				uploadedAt: new Date().toISOString(),
+				phase: 'converted',
+				sourceDocumentId: selectedPdf.id
 			};
 
 			await saveDocument(newDoc);

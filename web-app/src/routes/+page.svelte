@@ -86,7 +86,8 @@
 					type: getFileType(file.name),
 					content: content,
 					size: file.size,
-					uploadedAt: new Date().toISOString()
+					uploadedAt: new Date().toISOString(),
+					phase: 'uploaded'
 				};
 
 				// Save to IndexedDB
