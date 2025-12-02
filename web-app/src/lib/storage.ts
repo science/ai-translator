@@ -5,6 +5,7 @@ const DB_VERSION = 1;
 const STORE_NAME = 'documents';
 
 export type DocumentPhase = 'uploaded' | 'converted' | 'cleaned' | 'translated';
+export type TranslationVariant = 'japanese-only' | 'bilingual';
 
 export interface StoredDocument {
 	id: string;
@@ -15,6 +16,7 @@ export interface StoredDocument {
 	uploadedAt: string;
 	phase: DocumentPhase;
 	sourceDocumentId?: string; // Reference to original document (for converted/cleaned/translated)
+	variant?: TranslationVariant; // Only set for translated documents
 }
 
 let dbPromise: Promise<IDBPDatabase> | null = null;

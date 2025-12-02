@@ -1,5 +1,221 @@
 <script lang="ts">
-	// Translate page
+	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
+	import {
+		type StoredDocument,
+		getAllDocuments,
+		getDocument,
+		saveDocument,
+		generateDocumentId
+	} from '$lib/storage';
+	import {
+		type ProgressState,
+		createDeterminateProgress,
+		updateProgress,
+		completeProgress,
+		resetProgress,
+		parseProgressEvent
+	} from '$lib/progress';
+	import ProgressIndicator from '$lib/components/ProgressIndicator.svelte';
+
+	// Display-friendly version for the list
+	interface DocumentListItem {
+		id: string;
+		name: string;
+		type: 'pdf' | 'markdown' | 'text';
+		size: number;
+		uploadedAt: string;
+	}
+
+	let documents = $state<DocumentListItem[]>([]);
+	let selectedDocId = $state('');
+	let model = $state('gpt-5-mini');
+	let chunkSize = $state(4000);
+	let reasoningEffort = $state('medium');
+	let isTranslating = $state(false);
+	let japaneseOnlyMarkdown = $state('');
+	let bilingualMarkdown = $state('');
+	let activeTab = $state<'japanese-only' | 'bilingual'>('japanese-only');
+	let error = $state('');
+	let progress = $state<ProgressState>(resetProgress());
+
+	onMount(async () => {
+		if (browser) {
+			await loadDocuments();
+		}
+	});
+
+	async function loadDocuments() {
+		const docs = await getAllDocuments();
+		documents = docs.map((doc) => ({
+			id: doc.id,
+			name: doc.name,
+			type: doc.type,
+			size: doc.size,
+			uploadedAt: doc.uploadedAt
+		}));
+	}
+
+	// Filter to only show markdown documents
+	let markdownDocuments = $derived(documents.filter((doc) => doc.type === 'markdown'));
+
+	// Get the selected document info (not full document with content)
+	let selectedDocInfo = $derived(documents.find((doc) => doc.id === selectedDocId));
+
+	async function handleTranslate() {
+		if (!selectedDocInfo) return;
+
+		isTranslating = true;
+		error = '';
+		japaneseOnlyMarkdown = '';
+		bilingualMarkdown = '';
+		progress = createDeterminateProgress('Starting translation...');
+
+		try {
+			// Fetch the full document with content from IndexedDB
+			const selectedDoc = await getDocument(selectedDocId);
+			if (!selectedDoc) {
+				throw new Error('Document not found');
+			}
+
+			// Get content as string
+			let content: string;
+			if (typeof selectedDoc.content === 'string') {
+				content = selectedDoc.content;
+			} else {
+				// Convert Blob to string if needed
+				content = await selectedDoc.content.text();
+			}
+
+			const response = await fetch('/api/translate', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					content,
+					filename: selectedDoc.name,
+					model,
+					chunkSize,
+					reasoningEffort,
+					stream: true
+				})
+			});
+
+			if (!response.ok) {
+				const errorData = await response.json();
+				throw new Error(errorData.error || 'Translation failed');
+			}
+
+			// Process SSE stream
+			const reader = response.body?.getReader();
+			if (!reader) {
+				throw new Error('No response body');
+			}
+
+			const decoder = new TextDecoder();
+			let buffer = '';
+
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+
+				buffer += decoder.decode(value, { stream: true });
+				const lines = buffer.split('\n\n');
+				buffer = lines.pop() || '';
+
+				for (const line of lines) {
+					if (line.startsWith('data: ')) {
+						const data = line.slice(6);
+						try {
+							const event = JSON.parse(data);
+
+							if (event.type === 'progress' && event.percentage !== undefined && event.message) {
+								progress = updateProgress(progress as ReturnType<typeof createDeterminateProgress>, {
+									percentage: event.percentage,
+									message: event.message
+								});
+							} else if (event.type === 'complete') {
+								japaneseOnlyMarkdown = event.japaneseOnly;
+								bilingualMarkdown = event.bilingual;
+								progress = completeProgress(progress as ReturnType<typeof createDeterminateProgress>, 'Translation complete!');
+							} else if (event.type === 'error' && event.error) {
+								throw new Error(event.error);
+							}
+						} catch (parseError) {
+							// Try using parseProgressEvent for standard progress events
+							const event = parseProgressEvent(data);
+							if (event) {
+								if (event.type === 'progress' && event.percentage !== undefined && event.message) {
+									progress = updateProgress(progress as ReturnType<typeof createDeterminateProgress>, {
+										percentage: event.percentage,
+										message: event.message
+									});
+								} else if (event.type === 'error' && event.error) {
+									throw new Error(event.error);
+								}
+							}
+						}
+					}
+				}
+			}
+
+			// Store both translated documents in IndexedDB
+			const baseName = selectedDoc.name.replace(/\.md$/i, '');
+
+			// Save Japanese-only version
+			const japaneseDoc: StoredDocument = {
+				id: generateDocumentId(),
+				name: `${baseName}-ja.md`,
+				type: 'markdown',
+				content: japaneseOnlyMarkdown,
+				size: new Blob([japaneseOnlyMarkdown]).size,
+				uploadedAt: new Date().toISOString(),
+				phase: 'translated',
+				variant: 'japanese-only',
+				sourceDocumentId: selectedDoc.id
+			};
+			await saveDocument(japaneseDoc);
+
+			// Save bilingual version
+			const bilingualDoc: StoredDocument = {
+				id: generateDocumentId(),
+				name: `${baseName}-bilingual.md`,
+				type: 'markdown',
+				content: bilingualMarkdown,
+				size: new Blob([bilingualMarkdown]).size,
+				uploadedAt: new Date().toISOString(),
+				phase: 'translated',
+				variant: 'bilingual',
+				sourceDocumentId: selectedDoc.id
+			};
+			await saveDocument(bilingualDoc);
+
+			// Update local display list
+			documents = [
+				...documents,
+				{
+					id: japaneseDoc.id,
+					name: japaneseDoc.name,
+					type: japaneseDoc.type,
+					size: japaneseDoc.size,
+					uploadedAt: japaneseDoc.uploadedAt
+				},
+				{
+					id: bilingualDoc.id,
+					name: bilingualDoc.name,
+					type: bilingualDoc.type,
+					size: bilingualDoc.size,
+					uploadedAt: bilingualDoc.uploadedAt
+				}
+			];
+		} catch (err) {
+			error = err instanceof Error ? err.message : 'An error occurred';
+			progress = resetProgress();
+		} finally {
+			isTranslating = false;
+		}
+	}
 </script>
 
 <div class="max-w-4xl">
@@ -10,15 +226,30 @@
 			<label class="block text-sm font-medium text-gray-700 mb-2">
 				Select document to translate:
 			</label>
-			<select class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-				<option value="">No documents available</option>
+			<select
+				bind:value={selectedDocId}
+				disabled={isTranslating}
+				class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+			>
+				{#if markdownDocuments.length === 0}
+					<option value="">No markdown documents available</option>
+				{:else}
+					<option value="">Select a document...</option>
+					{#each markdownDocuments as doc (doc.id)}
+						<option value={doc.id}>{doc.name}</option>
+					{/each}
+				{/if}
 			</select>
 		</div>
 
 		<div class="grid grid-cols-2 gap-4">
 			<div>
 				<label class="block text-sm font-medium text-gray-700 mb-2">Model:</label>
-				<select class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+				<select
+					bind:value={model}
+					disabled={isTranslating}
+					class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+				>
 					<option value="gpt-5-mini">gpt-5-mini</option>
 					<option value="gpt-4o">gpt-4o</option>
 					<option value="gpt-5">gpt-5</option>
@@ -28,26 +259,83 @@
 				<label class="block text-sm font-medium text-gray-700 mb-2">Chunk Size:</label>
 				<input
 					type="number"
-					value="4000"
-					class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+					bind:value={chunkSize}
+					disabled={isTranslating}
+					class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
 				/>
 			</div>
 		</div>
 
 		<div>
 			<label class="block text-sm font-medium text-gray-700 mb-2">Reasoning Effort (GPT-5):</label>
-			<select class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+			<select
+				bind:value={reasoningEffort}
+				disabled={isTranslating}
+				class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+			>
 				<option value="low">Low</option>
-				<option value="medium" selected>Medium</option>
+				<option value="medium">Medium</option>
 				<option value="high">High</option>
 			</select>
 		</div>
 
 		<button
+			onclick={handleTranslate}
 			class="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-			disabled
+			disabled={!selectedDocId || isTranslating}
 		>
-			Start Translation
+			{#if isTranslating}
+				Translating...
+			{:else}
+				Start Translation
+			{/if}
 		</button>
+
+		<ProgressIndicator {progress} />
 	</div>
+
+	{#if error}
+		<div class="mt-6 bg-red-50 border border-red-200 rounded-lg p-4">
+			<p class="text-red-700">{error}</p>
+		</div>
+	{/if}
+
+	{#if japaneseOnlyMarkdown || bilingualMarkdown}
+		<div class="mt-6 bg-white rounded-lg border border-gray-200 p-6">
+			<h2 class="text-lg font-semibold text-gray-900 mb-4">Translation Results</h2>
+
+			<!-- Tabs -->
+			<div class="flex border-b border-gray-200 mb-4" role="tablist">
+				<button
+					role="tab"
+					aria-selected={activeTab === 'japanese-only'}
+					onclick={() => (activeTab = 'japanese-only')}
+					class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'japanese-only'
+						? 'border-blue-600 text-blue-600'
+						: 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+				>
+					Japanese Only
+				</button>
+				<button
+					role="tab"
+					aria-selected={activeTab === 'bilingual'}
+					onclick={() => (activeTab = 'bilingual')}
+					class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'bilingual'
+						? 'border-blue-600 text-blue-600'
+						: 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
+				>
+					Bilingual
+				</button>
+			</div>
+
+			<!-- Tab Content -->
+			<div class="prose prose-sm max-w-none bg-gray-50 rounded-lg p-4 overflow-auto max-h-96">
+				{#if activeTab === 'japanese-only'}
+					<pre class="whitespace-pre-wrap text-sm text-gray-800">{japaneseOnlyMarkdown}</pre>
+				{:else}
+					<pre class="whitespace-pre-wrap text-sm text-gray-800">{bilingualMarkdown}</pre>
+				{/if}
+			</div>
+		</div>
+	{/if}
 </div>

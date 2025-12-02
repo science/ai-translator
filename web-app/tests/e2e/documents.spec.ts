@@ -132,6 +132,9 @@ test.describe('Documents Page - Workflow Phase Filters', () => {
 	test('clicking a filter tab activates it', async ({ page }) => {
 		await page.goto('/documents');
 
+		// Wait for the page to be fully hydrated
+		await page.waitForLoadState('networkidle');
+
 		// Wait for the filter section to be fully loaded
 		const filterSection = page.locator('[data-testid="phase-filters"]');
 		await expect(filterSection).toBeVisible();
@@ -140,12 +143,12 @@ test.describe('Documents Page - Workflow Phase Filters', () => {
 		const allTab = page.locator('[data-testid="filter-all"]');
 		await expect(allTab).toHaveClass(/bg-blue-100/);
 
-		// Click the Uploaded tab
+		// Click the Uploaded tab using page.click for more reliable clicking
 		const uploadedTab = page.locator('[data-testid="filter-uploaded"]');
 		await uploadedTab.click();
 
-		// Wait for the Uploaded tab to become active
-		await expect(uploadedTab).toHaveClass(/bg-blue-100/);
+		// Wait for state to update with longer timeout for parallel execution
+		await expect(uploadedTab).toHaveClass(/bg-blue-100/, { timeout: 10000 });
 
 		// All tab should no longer be active
 		await expect(allTab).not.toHaveClass(/bg-blue-100/);

@@ -5,6 +5,7 @@
 	import {
 		type StoredDocument,
 		type DocumentPhase,
+		type TranslationVariant,
 		getAllDocuments,
 		getDocument,
 		deleteDocument as deleteDocFromDB
@@ -18,6 +19,7 @@
 		size: number;
 		uploadedAt: string;
 		phase: DocumentPhase;
+		variant?: TranslationVariant;
 	}
 
 	type FilterPhase = 'all' | DocumentPhase;
@@ -69,7 +71,8 @@
 				type: doc.type,
 				size: doc.size,
 				uploadedAt: doc.uploadedAt,
-				phase: doc.phase || 'uploaded' // Default for legacy docs without phase
+				phase: doc.phase || 'uploaded', // Default for legacy docs without phase
+				variant: doc.variant
 			}));
 		}
 	}
@@ -124,6 +127,29 @@
 				return 'bg-green-100 text-green-700';
 			case 'translated':
 				return 'bg-purple-100 text-purple-700';
+			default:
+				return 'bg-gray-100 text-gray-700';
+		}
+	}
+
+	function formatVariantLabel(variant?: TranslationVariant): string | null {
+		if (!variant) return null;
+		switch (variant) {
+			case 'japanese-only':
+				return 'Japanese';
+			case 'bilingual':
+				return 'Bilingual';
+			default:
+				return null;
+		}
+	}
+
+	function getVariantColor(variant: TranslationVariant): string {
+		switch (variant) {
+			case 'japanese-only':
+				return 'bg-pink-100 text-pink-700';
+			case 'bilingual':
+				return 'bg-indigo-100 text-indigo-700';
 			default:
 				return 'bg-gray-100 text-gray-700';
 		}
@@ -299,6 +325,12 @@
 							<span class="px-2 py-1 text-xs font-medium rounded-full {getPhaseColor(doc.phase)}">
 								{formatPhaseLabel(doc.phase)}
 							</span>
+							<!-- Variant Badge (for translated documents) -->
+							{#if doc.variant}
+								<span class="px-2 py-1 text-xs font-medium rounded-full {getVariantColor(doc.variant)}">
+									{formatVariantLabel(doc.variant)}
+								</span>
+							{/if}
 							<!-- Actions -->
 							<div class="relative">
 								<button
