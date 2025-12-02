@@ -528,3 +528,162 @@ test.describe('Documents Page - Preview Feature', () => {
 		await expect(previewMenu).not.toBeVisible();
 	});
 });
+
+// Helper to add a document directly to IndexedDB with specific phase
+async function addDocumentToIndexedDB(page: any, doc: any) {
+	await page.evaluate(async (document: any) => {
+		return new Promise<void>((resolve, reject) => {
+			const request = indexedDB.open('book-translate-db', 1);
+			request.onupgradeneeded = () => {
+				const db = request.result;
+				if (!db.objectStoreNames.contains('documents')) {
+					db.createObjectStore('documents', { keyPath: 'id' });
+				}
+			};
+			request.onsuccess = () => {
+				const db = request.result;
+				const tx = db.transaction('documents', 'readwrite');
+				const store = tx.objectStore('documents');
+				store.put(document);
+				tx.oncomplete = () => resolve();
+				tx.onerror = () => reject(tx.error);
+			};
+			request.onerror = () => reject(request.error);
+		});
+	}, doc);
+}
+
+test.describe('Documents Page - Document Phase Display', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto('/');
+		// Clear IndexedDB
+		await page.evaluate(async () => {
+			const databases = await indexedDB.databases();
+			for (const db of databases) {
+				if (db.name) indexedDB.deleteDatabase(db.name);
+			}
+		});
+	});
+
+	test('displays "Uploaded" phase for uploaded documents', async ({ page }) => {
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_uploaded_1',
+			name: 'original-file.pdf',
+			type: 'pdf',
+			content: 'test content',
+			size: 1024,
+			uploadedAt: new Date().toISOString(),
+			phase: 'uploaded'
+		});
+
+		await page.goto('/documents');
+
+		const documentRow = page.locator('[data-testid="document-row"]').first();
+		await expect(documentRow).toContainText('original-file.pdf');
+		await expect(documentRow).toContainText('Uploaded');
+	});
+
+	test('displays "Converted" phase for converted documents', async ({ page }) => {
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_converted_1',
+			name: 'converted-book.md',
+			type: 'markdown',
+			content: '# Converted Book',
+			size: 500,
+			uploadedAt: new Date().toISOString(),
+			phase: 'converted',
+			sourceDocumentId: 'doc_original'
+		});
+
+		await page.goto('/documents');
+
+		const documentRow = page.locator('[data-testid="document-row"]').first();
+		await expect(documentRow).toContainText('converted-book.md');
+		await expect(documentRow).toContainText('Converted');
+	});
+
+	test('displays "Cleaned" phase for cleaned documents', async ({ page }) => {
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_cleaned_1',
+			name: 'cleaned-book-rectified.md',
+			type: 'markdown',
+			content: '# Cleaned Book',
+			size: 600,
+			uploadedAt: new Date().toISOString(),
+			phase: 'cleaned',
+			sourceDocumentId: 'doc_converted'
+		});
+
+		await page.goto('/documents');
+
+		const documentRow = page.locator('[data-testid="document-row"]').first();
+		await expect(documentRow).toContainText('cleaned-book-rectified.md');
+		await expect(documentRow).toContainText('Cleaned');
+	});
+
+	test('displays "Translated" phase for translated documents', async ({ page }) => {
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_translated_1',
+			name: 'translated-book-jp.md',
+			type: 'markdown',
+			content: '# 翻訳された本',
+			size: 700,
+			uploadedAt: new Date().toISOString(),
+			phase: 'translated',
+			sourceDocumentId: 'doc_cleaned'
+		});
+
+		await page.goto('/documents');
+
+		const documentRow = page.locator('[data-testid="document-row"]').first();
+		await expect(documentRow).toContainText('translated-book-jp.md');
+		await expect(documentRow).toContainText('Translated');
+	});
+
+	test('displays multiple documents with different phases correctly', async ({ page }) => {
+		// Add documents in different phases
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_1',
+			name: 'original.pdf',
+			type: 'pdf',
+			content: 'pdf content',
+			size: 1000,
+			uploadedAt: new Date().toISOString(),
+			phase: 'uploaded'
+		});
+
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_2',
+			name: 'original.md',
+			type: 'markdown',
+			content: '# Converted',
+			size: 500,
+			uploadedAt: new Date().toISOString(),
+			phase: 'converted',
+			sourceDocumentId: 'doc_1'
+		});
+
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_3',
+			name: 'original-rectified.md',
+			type: 'markdown',
+			content: '# Cleaned',
+			size: 600,
+			uploadedAt: new Date().toISOString(),
+			phase: 'cleaned',
+			sourceDocumentId: 'doc_2'
+		});
+
+		await page.goto('/documents');
+
+		// All three documents should be visible with correct phases
+		const rows = page.locator('[data-testid="document-row"]');
+		await expect(rows).toHaveCount(3);
+
+		// Check each document has correct phase badge (use specific selectors to avoid filter buttons)
+		const phaseBadges = page.locator('[data-testid="document-row"] span');
+		await expect(phaseBadges.filter({ hasText: 'Uploaded' })).toBeVisible();
+		await expect(phaseBadges.filter({ hasText: 'Converted' })).toBeVisible();
+		await expect(phaseBadges.filter({ hasText: 'Cleaned' })).toBeVisible();
+	});
+});

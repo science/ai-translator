@@ -246,12 +246,14 @@ test.describe('PDF to Markdown Conversion', () => {
 	});
 
 	test('displays conversion result as markdown preview', async ({ page }) => {
-		// Mock successful conversion - set up before any navigation
+		// Mock successful conversion with SSE format - set up before any navigation
 		await page.route('**/api/convert', async (route) => {
+			const sseResponse = 'data: {"type":"activity","message":"Converting PDF..."}\n\n' +
+				'data: {"type":"complete","markdown":"# Chapter 1\\n\\nThis is the converted content."}\n\n';
 			await route.fulfill({
 				status: 200,
-				contentType: 'application/json',
-				body: JSON.stringify({ markdown: '# Chapter 1\n\nThis is the converted content.' })
+				contentType: 'text/event-stream',
+				body: sseResponse
 			});
 		});
 
@@ -287,12 +289,14 @@ test.describe('PDF to Markdown Conversion', () => {
 			uploadedAt: new Date().toISOString()
 		});
 
-		// Mock successful conversion
+		// Mock successful conversion with SSE format
 		await page.route('/api/convert', async (route) => {
+			const sseResponse = 'data: {"type":"activity","message":"Starting conversion..."}\n\n' +
+				'data: {"type":"complete","markdown":"# Converted Document"}\n\n';
 			await route.fulfill({
 				status: 200,
-				contentType: 'application/json',
-				body: JSON.stringify({ markdown: '# Converted Document' })
+				contentType: 'text/event-stream',
+				body: sseResponse
 			});
 		});
 
@@ -329,6 +333,10 @@ test.describe('PDF to Markdown Conversion', () => {
 		expect(convertedDoc).toBeDefined();
 		expect(convertedDoc.name).toContain('test-book');
 		expect(convertedDoc.content).toBe('# Converted Document');
+
+		// Verify phase is set correctly
+		expect(convertedDoc.phase).toBe('converted');
+		expect(convertedDoc.sourceDocumentId).toBe('doc_123');
 	});
 
 	test('displays error message when conversion fails', async ({ page }) => {

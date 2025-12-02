@@ -230,12 +230,14 @@ test.describe('Document Cleanup (Rectification)', () => {
 	});
 
 	test('displays cleanup result as markdown preview', async ({ page }) => {
-		// Mock successful cleanup - set up before any navigation
+		// Mock successful cleanup with SSE format - set up before any navigation
 		await page.route('**/api/cleanup', async (route) => {
+			const sseResponse = 'data: {"type":"progress","percentage":100,"message":"Cleanup complete"}\n\n' +
+				'data: {"type":"complete","markdown":"# Chapter 1\\n\\nThis is the cleaned content."}\n\n';
 			await route.fulfill({
 				status: 200,
-				contentType: 'application/json',
-				body: JSON.stringify({ markdown: '# Chapter 1\n\nThis is the cleaned content.' })
+				contentType: 'text/event-stream',
+				body: sseResponse
 			});
 		});
 
@@ -271,12 +273,14 @@ test.describe('Document Cleanup (Rectification)', () => {
 			uploadedAt: new Date().toISOString()
 		});
 
-		// Mock successful cleanup
+		// Mock successful cleanup with SSE format
 		await page.route('/api/cleanup', async (route) => {
+			const sseResponse = 'data: {"type":"progress","percentage":50,"message":"Processing chunk 1/2..."}\n\n' +
+				'data: {"type":"complete","markdown":"# Test Book"}\n\n';
 			await route.fulfill({
 				status: 200,
-				contentType: 'application/json',
-				body: JSON.stringify({ markdown: '# Test Book' })
+				contentType: 'text/event-stream',
+				body: sseResponse
 			});
 		});
 
@@ -313,6 +317,10 @@ test.describe('Document Cleanup (Rectification)', () => {
 		expect(cleanedDoc).toBeDefined();
 		expect(cleanedDoc.name).toBe('test-book-rectified.md');
 		expect(cleanedDoc.content).toBe('# Test Book');
+
+		// Verify phase is set correctly
+		expect(cleanedDoc.phase).toBe('cleaned');
+		expect(cleanedDoc.sourceDocumentId).toBe('doc_md_123');
 	});
 
 	test('displays error message when cleanup fails', async ({ page }) => {
