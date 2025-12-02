@@ -9,6 +9,15 @@
 		blobToBase64,
 		generateDocumentId
 	} from '$lib/storage';
+	import {
+		type ProgressState,
+		createIndeterminateProgress,
+		addActivity,
+		completeProgress,
+		resetProgress,
+		parseProgressEvent
+	} from '$lib/progress';
+	import ProgressIndicator from '$lib/components/ProgressIndicator.svelte';
 
 	// Display-friendly version for the list
 	interface DocumentListItem {
@@ -24,6 +33,7 @@
 	let isConverting = $state(false);
 	let convertedMarkdown = $state('');
 	let error = $state('');
+	let progress = $state<ProgressState>(resetProgress());
 
 	onMount(async () => {
 		if (browser) {
@@ -54,6 +64,7 @@
 		isConverting = true;
 		error = '';
 		convertedMarkdown = '';
+		progress = createIndeterminateProgress('Starting conversion...');
 
 		try {
 			// Fetch the full document with content from IndexedDB
@@ -78,17 +89,51 @@
 				},
 				body: JSON.stringify({
 					content: base64Content,
-					filename: selectedPdf.name
+					filename: selectedPdf.name,
+					stream: true
 				})
 			});
 
-			const result = await response.json();
-
 			if (!response.ok) {
-				throw new Error(result.error || 'Conversion failed');
+				const errorData = await response.json();
+				throw new Error(errorData.error || 'Conversion failed');
 			}
 
-			convertedMarkdown = result.markdown;
+			// Process SSE stream
+			const reader = response.body?.getReader();
+			if (!reader) {
+				throw new Error('No response body');
+			}
+
+			const decoder = new TextDecoder();
+			let buffer = '';
+
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+
+				buffer += decoder.decode(value, { stream: true });
+				const lines = buffer.split('\n\n');
+				buffer = lines.pop() || '';
+
+				for (const line of lines) {
+					if (line.startsWith('data: ')) {
+						const data = line.slice(6);
+						const event = parseProgressEvent(data);
+
+						if (event) {
+							if (event.type === 'activity' && event.message) {
+								progress = addActivity(progress as ReturnType<typeof createIndeterminateProgress>, event.message);
+							} else if (event.type === 'complete' && event.markdown) {
+								convertedMarkdown = event.markdown;
+								progress = completeProgress(progress as ReturnType<typeof createIndeterminateProgress>, 'Conversion complete!');
+							} else if (event.type === 'error' && event.error) {
+								throw new Error(event.error);
+							}
+						}
+					}
+				}
+			}
 
 			// Store the converted document in IndexedDB
 			const baseName = selectedPdf.name.replace(/\.pdf$/i, '');
@@ -96,8 +141,8 @@
 				id: generateDocumentId(),
 				name: `${baseName}.md`,
 				type: 'markdown',
-				content: result.markdown,
-				size: new Blob([result.markdown]).size,
+				content: convertedMarkdown,
+				size: new Blob([convertedMarkdown]).size,
 				uploadedAt: new Date().toISOString()
 			};
 
@@ -116,6 +161,7 @@
 			];
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'An error occurred';
+			progress = resetProgress();
 		} finally {
 			isConverting = false;
 		}
@@ -155,6 +201,8 @@
 				Convert to Markdown
 			{/if}
 		</button>
+
+		<ProgressIndicator {progress} />
 	</div>
 
 	{#if error}

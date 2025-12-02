@@ -8,6 +8,15 @@
 		saveDocument,
 		generateDocumentId
 	} from '$lib/storage';
+	import {
+		type ProgressState,
+		createDeterminateProgress,
+		updateProgress,
+		completeProgress,
+		resetProgress,
+		parseProgressEvent
+	} from '$lib/progress';
+	import ProgressIndicator from '$lib/components/ProgressIndicator.svelte';
 
 	// Display-friendly version for the list
 	interface DocumentListItem {
@@ -25,6 +34,7 @@
 	let isCleaning = $state(false);
 	let cleanedMarkdown = $state('');
 	let error = $state('');
+	let progress = $state<ProgressState>(resetProgress());
 
 	onMount(async () => {
 		if (browser) {
@@ -55,6 +65,7 @@
 		isCleaning = true;
 		error = '';
 		cleanedMarkdown = '';
+		progress = createDeterminateProgress('Starting cleanup...');
 
 		try {
 			// Fetch the full document with content from IndexedDB
@@ -81,17 +92,54 @@
 					content,
 					filename: selectedDoc.name,
 					model,
-					chunkSize
+					chunkSize,
+					stream: true
 				})
 			});
 
-			const result = await response.json();
-
 			if (!response.ok) {
-				throw new Error(result.error || 'Cleanup failed');
+				const errorData = await response.json();
+				throw new Error(errorData.error || 'Cleanup failed');
 			}
 
-			cleanedMarkdown = result.markdown;
+			// Process SSE stream
+			const reader = response.body?.getReader();
+			if (!reader) {
+				throw new Error('No response body');
+			}
+
+			const decoder = new TextDecoder();
+			let buffer = '';
+
+			while (true) {
+				const { done, value } = await reader.read();
+				if (done) break;
+
+				buffer += decoder.decode(value, { stream: true });
+				const lines = buffer.split('\n\n');
+				buffer = lines.pop() || '';
+
+				for (const line of lines) {
+					if (line.startsWith('data: ')) {
+						const data = line.slice(6);
+						const event = parseProgressEvent(data);
+
+						if (event) {
+							if (event.type === 'progress' && event.percentage !== undefined && event.message) {
+								progress = updateProgress(progress as ReturnType<typeof createDeterminateProgress>, {
+									percentage: event.percentage,
+									message: event.message
+								});
+							} else if (event.type === 'complete' && event.markdown) {
+								cleanedMarkdown = event.markdown;
+								progress = completeProgress(progress as ReturnType<typeof createDeterminateProgress>, 'Cleanup complete!');
+							} else if (event.type === 'error' && event.error) {
+								throw new Error(event.error);
+							}
+						}
+					}
+				}
+			}
 
 			// Store the cleaned document in IndexedDB
 			const baseName = selectedDoc.name.replace(/\.md$/i, '');
@@ -99,8 +147,8 @@
 				id: generateDocumentId(),
 				name: `${baseName}-rectified.md`,
 				type: 'markdown',
-				content: result.markdown,
-				size: new Blob([result.markdown]).size,
+				content: cleanedMarkdown,
+				size: new Blob([cleanedMarkdown]).size,
 				uploadedAt: new Date().toISOString()
 			};
 
@@ -119,6 +167,7 @@
 			];
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'An error occurred';
+			progress = resetProgress();
 		} finally {
 			isCleaning = false;
 		}
@@ -184,6 +233,8 @@
 				Start Cleanup
 			{/if}
 		</button>
+
+		<ProgressIndicator {progress} />
 	</div>
 
 	{#if error}
