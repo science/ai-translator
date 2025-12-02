@@ -73,14 +73,36 @@
 		saveDocuments();
 	}
 
+	function arrayBufferToBase64(buffer: ArrayBuffer): string {
+		// Process in chunks to avoid "Maximum call stack size exceeded" error
+		// The spread operator (...) fails for large arrays (>100KB)
+		const bytes = new Uint8Array(buffer);
+		const chunkSize = 8192; // Process 8KB at a time
+		let binary = '';
+
+		for (let i = 0; i < bytes.length; i += chunkSize) {
+			const chunk = bytes.subarray(i, i + chunkSize);
+			binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+		}
+
+		return btoa(binary);
+	}
+
+	function isPdfFile(file: File): boolean {
+		// Check both MIME type and extension for reliability
+		if (file.type === 'application/pdf') return true;
+		const ext = file.name.split('.').pop()?.toLowerCase();
+		return ext === 'pdf';
+	}
+
 	async function readFileContent(file: File): Promise<string> {
 		return new Promise((resolve, reject) => {
 			const reader = new FileReader();
 			reader.onload = (e) => {
-				if (file.type === 'application/pdf') {
+				if (isPdfFile(file)) {
 					// For PDFs, store as base64
 					const result = e.target?.result as ArrayBuffer;
-					const base64 = btoa(String.fromCharCode(...new Uint8Array(result)));
+					const base64 = arrayBufferToBase64(result);
 					resolve(base64);
 				} else {
 					resolve(e.target?.result as string);
@@ -88,7 +110,7 @@
 			};
 			reader.onerror = reject;
 
-			if (file.type === 'application/pdf') {
+			if (isPdfFile(file)) {
 				reader.readAsArrayBuffer(file);
 			} else {
 				reader.readAsText(file);

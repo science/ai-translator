@@ -1,6 +1,11 @@
 import { test, expect } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
+import { fileURLToPath } from 'url';
+
+// ES module path resolution
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 test.describe('File Upload', () => {
 	test.beforeEach(async ({ page }) => {
@@ -182,4 +187,56 @@ test.describe('File Upload', () => {
 		// File should still be visible
 		await expect(page.getByText(fileName)).toBeVisible({ timeout: 5000 });
 	});
+
+	test('handles large PDF files without stack overflow', async ({ page }) => {
+		// BUG: The original code used String.fromCharCode(...new Uint8Array(result))
+		// which causes "Maximum call stack size exceeded" for large files
+
+		// Capture any page errors
+		const pageErrors: string[] = [];
+		page.on('pageerror', err => {
+			pageErrors.push(err.message);
+		});
+
+		await page.goto('/');
+
+		// Create a PDF large enough to trigger stack overflow (>100KB)
+		// The spread operator fails around 100-200KB depending on browser
+		const largePdfPath = path.resolve(__dirname, '../../../test/fixtures/Indigenous-Knowledges-in-Psychedelic-Science-Evgenia-Fotiou.pdf');
+
+		// If fixture doesn't exist, create synthetic large PDF
+		let testFilePath = largePdfPath;
+		if (!fs.existsSync(largePdfPath)) {
+			const syntheticPath = path.resolve(__dirname, 'temp-large-test.pdf');
+			// 200KB is enough to trigger the bug
+			const largeContent = '%PDF-1.4\n' + 'x'.repeat(200 * 1024);
+			fs.writeFileSync(syntheticPath, largeContent);
+			testFilePath = syntheticPath;
+		}
+
+		const fileInput = page.locator('input[type="file"]');
+		await fileInput.setInputFiles(testFilePath);
+
+		// Wait for processing
+		await page.waitForTimeout(2000);
+
+		// Should NOT have stack overflow error
+		expect(pageErrors).not.toContain('Maximum call stack size exceeded');
+		expect(pageErrors.filter(e => e.includes('stack'))).toHaveLength(0);
+
+		// File should appear in the list
+		const fileName = path.basename(testFilePath);
+		await expect(page.getByText(fileName)).toBeVisible({ timeout: 5000 });
+
+		// Verify content was stored correctly
+		const storedDocs = await page.evaluate(() => {
+			const docs = localStorage.getItem('documents');
+			return docs ? JSON.parse(docs) : [];
+		});
+
+		expect(storedDocs.length).toBe(1);
+		expect(storedDocs[0].type).toBe('pdf');
+		expect(storedDocs[0].content.length).toBeGreaterThan(0);
+	});
+
 });
