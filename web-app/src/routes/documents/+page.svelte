@@ -1,10 +1,12 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
+	import { marked } from 'marked';
 	import {
 		type StoredDocument,
 		type DocumentPhase,
 		getAllDocuments,
+		getDocument,
 		deleteDocument as deleteDocFromDB
 	} from '$lib/storage';
 
@@ -31,6 +33,7 @@
 	let documents = $state<DocumentListItem[]>([]);
 	let activeFilter = $state<FilterPhase>('all');
 	let searchQuery = $state('');
+	let previewMenuDocId = $state<string | null>(null);
 
 	// Computed filtered documents
 	let filteredDocuments = $derived.by(() => {
@@ -150,9 +153,95 @@
 		const input = event.target as HTMLInputElement;
 		searchQuery = input.value;
 	}
+
+	async function downloadDocument(id: string) {
+		const doc = await getDocument(id);
+		if (!doc) return;
+
+		let blob: Blob;
+		if (doc.type === 'pdf') {
+			blob = doc.content as Blob;
+		} else {
+			blob = new Blob([doc.content as string], { type: 'text/plain' });
+		}
+
+		const url = URL.createObjectURL(blob);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = doc.name;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+		URL.revokeObjectURL(url);
+	}
+
+	async function previewDocument(id: string, docType: 'pdf' | 'markdown' | 'text') {
+		if (docType === 'pdf') {
+			// For PDFs, open directly in new tab
+			const doc = await getDocument(id);
+			if (!doc) return;
+
+			const blob = doc.content as Blob;
+			const url = URL.createObjectURL(blob);
+			window.open(url, '_blank');
+		} else {
+			// For markdown/text, show menu
+			previewMenuDocId = id;
+		}
+	}
+
+	async function previewRaw(id: string) {
+		const doc = await getDocument(id);
+		if (!doc) return;
+
+		const content = doc.content as string;
+		const blob = new Blob([content], { type: 'text/plain' });
+		const url = URL.createObjectURL(blob);
+		window.open(url, '_blank');
+		previewMenuDocId = null;
+	}
+
+	async function previewRendered(id: string) {
+		const doc = await getDocument(id);
+		if (!doc) return;
+
+		const content = doc.content as string;
+		const html = await marked(content);
+		const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>${doc.name}</title>
+	<style>
+		body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 800px; margin: 40px auto; padding: 0 20px; line-height: 1.6; }
+		pre { background: #f4f4f4; padding: 1em; overflow-x: auto; }
+		code { background: #f4f4f4; padding: 0.2em 0.4em; }
+		blockquote { border-left: 4px solid #ddd; margin-left: 0; padding-left: 1em; color: #666; }
+	</style>
+</head>
+<body>${html}</body>
+</html>`;
+
+		const blob = new Blob([fullHtml], { type: 'text/html' });
+		const url = URL.createObjectURL(blob);
+		window.open(url, '_blank');
+		previewMenuDocId = null;
+	}
+
+	function closePreviewMenu() {
+		previewMenuDocId = null;
+	}
+
+	function handleClickOutside(event: MouseEvent) {
+		const target = event.target as HTMLElement;
+		if (!target.closest('[data-testid="preview-menu"]') && !target.closest('[data-testid="preview-document"]')) {
+			closePreviewMenu();
+		}
+	}
 </script>
 
-<div class="max-w-4xl">
+<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+<div class="max-w-4xl" onclick={handleClickOutside}>
 	<h1 class="text-2xl font-bold text-gray-900 mb-6">My Documents</h1>
 
 	<div class="bg-white rounded-lg border border-gray-200 p-6">
@@ -211,6 +300,63 @@
 								{formatPhaseLabel(doc.phase)}
 							</span>
 							<!-- Actions -->
+							<div class="relative">
+								<button
+									data-testid="preview-document"
+									onclick={() => previewDocument(doc.id, doc.type)}
+									class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+									title="Preview document"
+								>
+									<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+										/>
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+										/>
+									</svg>
+								</button>
+								{#if previewMenuDocId === doc.id && doc.type !== 'pdf'}
+									<div
+										data-testid="preview-menu"
+										class="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 py-1 min-w-[140px]"
+									>
+										<button
+											onclick={() => previewRaw(doc.id)}
+											class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+										>
+											View Raw
+										</button>
+										<button
+											onclick={() => previewRendered(doc.id)}
+											class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+										>
+											View Rendered
+										</button>
+									</div>
+								{/if}
+							</div>
+							<button
+								data-testid="download-document"
+								onclick={() => downloadDocument(doc.id)}
+								class="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+								title="Download document"
+							>
+								<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+									<path
+										stroke-linecap="round"
+										stroke-linejoin="round"
+										stroke-width="2"
+										d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+									/>
+								</svg>
+							</button>
 							<button
 								data-testid="delete-document"
 								onclick={() => deleteDocument(doc.id)}
