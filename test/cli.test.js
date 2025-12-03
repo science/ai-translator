@@ -136,5 +136,34 @@ describe('CLI', () => {
 
       expect(() => parseCliArgs(args)).toThrow('Cannot use --rectify and --pdf-to-md flags together');
     });
+
+    test('should parse --no-context flag to disable context-aware translation', () => {
+      const args = ['node', 'index.js', 'test.md', '--no-context'];
+      const result = parseCliArgs(args);
+
+      expect(result.contextAware).toBe(false);
+    });
+
+    test('should default contextAware to true', () => {
+      const args = ['node', 'index.js', 'test.md'];
+      const result = parseCliArgs(args);
+
+      expect(result.contextAware).toBe(true);
+    });
+
+    test('should parse --no-context flag with other options', () => {
+      const args = [
+        'node', 'index.js', 'book.md',
+        '--no-context',
+        '--output-dir', 'output/',
+        '--model', 'gpt-4o'
+      ];
+      const result = parseCliArgs(args);
+
+      expect(result.inputFile).toBe('book.md');
+      expect(result.contextAware).toBe(false);
+      expect(result.outputDir).toBe('output/');
+      expect(result.model).toBe('gpt-4o');
+    });
   });
 });

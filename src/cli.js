@@ -8,6 +8,7 @@ export function parseCliArgs(args) {
   let reasoningEffort = 'medium';
   let rectify = false;
   let pdfToMd = false;
+  let contextAware = true;
 
   for (let i = 0; i < cliArgs.length; i++) {
     const arg = cliArgs[i];
@@ -24,6 +25,8 @@ export function parseCliArgs(args) {
       rectify = true;
     } else if (arg === '--pdf-to-md') {
       pdfToMd = true;
+    } else if (arg === '--no-context') {
+      contextAware = false;
     } else if (!arg.startsWith('--')) {
       inputFile = arg;
     }
@@ -44,6 +47,7 @@ export function parseCliArgs(args) {
     model,
     reasoningEffort,
     rectify,
-    pdfToMd
+    pdfToMd,
+    contextAware
   };
 }

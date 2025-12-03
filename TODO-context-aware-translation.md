@@ -402,7 +402,7 @@ Each phase follows TDD: write failing test → implement → verify pass → ref
 1. **Phase 1.1-1.2**: Update translator.js (prompt + signature + JSON input) ✅ DONE
 2. **Phase 2**: JSON response parsing in translator.js ✅ DONE
 3. **Phase 1.3**: Update translationEngine.js (context building + chaining) ✅ DONE
-4. **Phase 3.1**: CLI `--context-window` and `--style-lock` options
+4. **Phase 3.1**: CLI `--no-context` option ✅ DONE
 5. **Phase 4**: Web app API and UI integration
 6. **Phase 3.2**: Web app settings UI
 7. **Phase 5**: Integration tests and manual validation (full pipeline verification)

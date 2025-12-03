@@ -94,6 +94,7 @@ async function main() {
       console.log(`  Chunk size: ${options.chunkSize}`);
       console.log(`  Model: ${options.model}`);
       console.log(`  Reasoning effort: ${options.reasoningEffort}`);
+      console.log(`  Context-aware: ${options.contextAware}`);
       console.log();
 
       console.log('Reading markdown file...');
@@ -108,7 +109,8 @@ async function main() {
       console.log('Initializing translator...');
       const translator = createTranslator({
         model: options.model,
-        reasoningEffort: options.reasoningEffort
+        reasoningEffort: options.reasoningEffort,
+        contextAware: options.contextAware
       });
 
       console.log('Starting translation...');
