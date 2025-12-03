@@ -6,7 +6,6 @@
 		getAllDocuments,
 		getDocument,
 		saveDocument,
-		blobToBase64,
 		generateDocumentId
 	} from '$lib/storage';
 	import {
@@ -14,10 +13,12 @@
 		createIndeterminateProgress,
 		addActivity,
 		completeProgress,
-		resetProgress,
-		parseProgressEvent
+		resetProgress
 	} from '$lib/progress';
 	import ProgressIndicator from '$lib/components/ProgressIndicator.svelte';
+
+	// Browser service for PDF conversion
+	import { createPdfConverter } from '$lib/services/pdfConverter';
 
 	// Display-friendly version for the list
 	interface DocumentListItem {
@@ -73,67 +74,45 @@
 				throw new Error('Document not found');
 			}
 
-			// Convert Blob to base64 for API call
-			let base64Content: string;
+			progress = addActivity(
+				progress as ReturnType<typeof createIndeterminateProgress>,
+				'Loading PDF...'
+			);
+
+			// Get PDF buffer from stored content
+			let pdfBuffer: Uint8Array;
 			if (selectedPdf.content instanceof Blob) {
-				base64Content = await blobToBase64(selectedPdf.content);
+				const arrayBuffer = await selectedPdf.content.arrayBuffer();
+				pdfBuffer = new Uint8Array(arrayBuffer);
 			} else {
-				// Fallback for migrated content that might still be base64 string
-				base64Content = selectedPdf.content;
-			}
-
-			const response = await fetch('/api/convert', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					content: base64Content,
-					filename: selectedPdf.name,
-					stream: true
-				})
-			});
-
-			if (!response.ok) {
-				const errorData = await response.json();
-				throw new Error(errorData.error || 'Conversion failed');
-			}
-
-			// Process SSE stream
-			const reader = response.body?.getReader();
-			if (!reader) {
-				throw new Error('No response body');
-			}
-
-			const decoder = new TextDecoder();
-			let buffer = '';
-
-			while (true) {
-				const { done, value } = await reader.read();
-				if (done) break;
-
-				buffer += decoder.decode(value, { stream: true });
-				const lines = buffer.split('\n\n');
-				buffer = lines.pop() || '';
-
-				for (const line of lines) {
-					if (line.startsWith('data: ')) {
-						const data = line.slice(6);
-						const event = parseProgressEvent(data);
-
-						if (event) {
-							if (event.type === 'activity' && event.message) {
-								progress = addActivity(progress as ReturnType<typeof createIndeterminateProgress>, event.message);
-							} else if (event.type === 'complete' && event.markdown) {
-								convertedMarkdown = event.markdown;
-								progress = completeProgress(progress as ReturnType<typeof createIndeterminateProgress>, 'Conversion complete!');
-							} else if (event.type === 'error' && event.error) {
-								throw new Error(event.error);
-							}
-						}
-					}
+				// Fallback for base64 content (legacy migration)
+				const binaryString = atob(selectedPdf.content);
+				pdfBuffer = new Uint8Array(binaryString.length);
+				for (let i = 0; i < binaryString.length; i++) {
+					pdfBuffer[i] = binaryString.charCodeAt(i);
 				}
 			}
+
+			progress = addActivity(
+				progress as ReturnType<typeof createIndeterminateProgress>,
+				'Creating PDF converter...'
+			);
+
+			// Create PDF converter
+			const converter = await createPdfConverter();
+
+			progress = addActivity(
+				progress as ReturnType<typeof createIndeterminateProgress>,
+				'Converting PDF to markdown...'
+			);
+
+			// Convert PDF to markdown
+			convertedMarkdown = await converter.convertToMarkdown(pdfBuffer);
+
+			progress = completeProgress(
+				progress as ReturnType<typeof createIndeterminateProgress>,
+				'Conversion complete!'
+			);
 
 			// Store the converted document in IndexedDB
 			const baseName = selectedPdf.name.replace(/\.pdf$/i, '');

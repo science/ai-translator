@@ -13,10 +13,14 @@
 		createDeterminateProgress,
 		updateProgress,
 		completeProgress,
-		resetProgress,
-		parseProgressEvent
+		resetProgress
 	} from '$lib/progress';
 	import ProgressIndicator from '$lib/components/ProgressIndicator.svelte';
+
+	// Browser services for direct OpenAI calls
+	import { chunkBySize } from '$lib/services/chunker';
+	import { createRectifier } from '$lib/services/rectifier';
+	import { rectifyDocument } from '$lib/services/rectificationEngine';
 
 	// Display-friendly version for the list
 	interface DocumentListItem {
@@ -31,6 +35,7 @@
 	let selectedDocId = $state('');
 	let model = $state('gpt-5-mini');
 	let chunkSize = $state(4000);
+	let reasoningEffort = $state('medium');
 	let isCleaning = $state(false);
 	let cleanedMarkdown = $state('');
 	let error = $state('');
@@ -56,8 +61,18 @@
 	// Filter to only show markdown documents
 	let markdownDocuments = $derived(documents.filter((doc) => doc.type === 'markdown'));
 
+	// Check if the selected model is a 5-series model (supports reasoning effort)
+	let is5SeriesModel = $derived(model.startsWith('gpt-5'));
+
 	// Get the selected document info (not full document with content)
 	let selectedDocInfo = $derived(documents.find((doc) => doc.id === selectedDocId));
+
+	/**
+	 * Assembles rectified markdown from rectified chunks
+	 */
+	function assembleRectified(chunks: Array<{ rectifiedContent: string }>): string {
+		return chunks.map((chunk) => chunk.rectifiedContent).join('\n\n');
+	}
 
 	async function handleCleanup() {
 		if (!selectedDocInfo) return;
@@ -68,6 +83,12 @@
 		progress = createDeterminateProgress('Starting cleanup...');
 
 		try {
+			// Get API key from localStorage
+			const apiKey = localStorage.getItem('openai_api_key');
+			if (!apiKey) {
+				throw new Error('OpenAI API key not found. Please set it in Settings.');
+			}
+
 			// Fetch the full document with content from IndexedDB
 			const selectedDoc = await getDocument(selectedDocId);
 			if (!selectedDoc) {
@@ -83,63 +104,45 @@
 				content = await selectedDoc.content.text();
 			}
 
-			const response = await fetch('/api/cleanup', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					content,
-					filename: selectedDoc.name,
-					model,
-					chunkSize,
-					stream: true
-				})
+			// Step 1: Chunk the content
+			progress = updateProgress(progress as ReturnType<typeof createDeterminateProgress>, {
+				percentage: 5,
+				message: 'Chunking document...'
 			});
 
-			if (!response.ok) {
-				const errorData = await response.json();
-				throw new Error(errorData.error || 'Cleanup failed');
-			}
+			const chunks = chunkBySize(content, chunkSize);
 
-			// Process SSE stream
-			const reader = response.body?.getReader();
-			if (!reader) {
-				throw new Error('No response body');
-			}
+			// Step 2: Create rectifier with browser service
+			const rectifier = createRectifier({
+				apiKey,
+				model,
+				reasoningEffort: is5SeriesModel ? reasoningEffort : undefined
+			});
 
-			const decoder = new TextDecoder();
-			let buffer = '';
-
-			while (true) {
-				const { done, value } = await reader.read();
-				if (done) break;
-
-				buffer += decoder.decode(value, { stream: true });
-				const lines = buffer.split('\n\n');
-				buffer = lines.pop() || '';
-
-				for (const line of lines) {
-					if (line.startsWith('data: ')) {
-						const data = line.slice(6);
-						const event = parseProgressEvent(data);
-
-						if (event) {
-							if (event.type === 'progress' && event.percentage !== undefined && event.message) {
-								progress = updateProgress(progress as ReturnType<typeof createDeterminateProgress>, {
-									percentage: event.percentage,
-									message: event.message
-								});
-							} else if (event.type === 'complete' && event.markdown) {
-								cleanedMarkdown = event.markdown;
-								progress = completeProgress(progress as ReturnType<typeof createDeterminateProgress>, 'Cleanup complete!');
-							} else if (event.type === 'error' && event.error) {
-								throw new Error(event.error);
-							}
-						}
-					}
+			// Step 3: Rectify document with progress callback
+			const { rectifiedChunks } = await rectifyDocument(chunks, rectifier.rectifyChunk, {
+				onProgress: (prog) => {
+					// Map progress to 10-95% (reserving 0-10 for chunking, 95-100 for assembly)
+					const mappedPercentage = 10 + Math.round(prog.percentComplete * 0.85);
+					progress = updateProgress(progress as ReturnType<typeof createDeterminateProgress>, {
+						percentage: mappedPercentage,
+						message: `Rectifying chunk ${prog.current}/${prog.total}...`
+					});
 				}
-			}
+			});
+
+			// Step 4: Assemble output
+			progress = updateProgress(progress as ReturnType<typeof createDeterminateProgress>, {
+				percentage: 95,
+				message: 'Assembling results...'
+			});
+
+			cleanedMarkdown = assembleRectified(rectifiedChunks);
+
+			progress = completeProgress(
+				progress as ReturnType<typeof createDeterminateProgress>,
+				'Cleanup complete!'
+			);
 
 			// Store the cleaned document in IndexedDB
 			const baseName = selectedDoc.name.replace(/\.md$/i, '');
@@ -224,6 +227,21 @@
 				/>
 			</div>
 		</div>
+
+		{#if is5SeriesModel}
+			<div>
+				<label class="block text-sm font-medium text-gray-700 mb-2">Reasoning Effort:</label>
+				<select
+					bind:value={reasoningEffort}
+					disabled={isCleaning}
+					class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+				>
+					<option value="low">Low</option>
+					<option value="medium">Medium</option>
+					<option value="high">High</option>
+				</select>
+			</div>
+		{/if}
 
 		<button
 			onclick={handleCleanup}
