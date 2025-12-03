@@ -59,6 +59,22 @@ export interface OpenAIClient {
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 
 /**
+ * Strips surrounding quotes from API key (common copy-paste error)
+ */
+export function sanitizeApiKey(key: string): string {
+	let sanitized = key.trim();
+	// Strip surrounding double quotes
+	if (sanitized.startsWith('"') && sanitized.endsWith('"')) {
+		sanitized = sanitized.slice(1, -1);
+	}
+	// Strip surrounding single quotes
+	if (sanitized.startsWith("'") && sanitized.endsWith("'")) {
+		sanitized = sanitized.slice(1, -1);
+	}
+	return sanitized;
+}
+
+/**
  * Creates a browser-compatible OpenAI client using native fetch
  */
 export function createOpenAIClient(options: OpenAIClientOptions): OpenAIClient {
@@ -66,7 +82,7 @@ export function createOpenAIClient(options: OpenAIClientOptions): OpenAIClient {
 		throw new Error('API key is required');
 	}
 
-	const apiKey = options.apiKey;
+	const apiKey = sanitizeApiKey(options.apiKey);
 	const maxRetries = options.maxRetries ?? 2;
 
 	async function createChatCompletion(

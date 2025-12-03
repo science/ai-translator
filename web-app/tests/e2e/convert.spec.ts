@@ -2,55 +2,16 @@ import { test, expect } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { clearAllStorage, addDocumentToIndexedDB, getAllDocumentsFromIndexedDB } from './helpers';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Helper to clear all storage
-async function clearAllStorage(page: any) {
-	await page.evaluate(async () => {
-		localStorage.clear();
-		const databases = await indexedDB.databases();
-		for (const db of databases) {
-			if (db.name) indexedDB.deleteDatabase(db.name);
-		}
-	});
-}
-
-// Helper to add a document to IndexedDB
-async function addDocumentToIndexedDB(page: any, doc: any) {
-	await page.evaluate(async (document: any) => {
-		return new Promise<void>((resolve, reject) => {
-			const request = indexedDB.open('book-translate-db', 1);
-			request.onupgradeneeded = () => {
-				const db = request.result;
-				if (!db.objectStoreNames.contains('documents')) {
-					db.createObjectStore('documents', { keyPath: 'id' });
-				}
-			};
-			request.onsuccess = () => {
-				const db = request.result;
-				const tx = db.transaction('documents', 'readwrite');
-				const store = tx.objectStore('documents');
-
-				// Convert base64 to Blob for PDFs
-				let content = document.content;
-				if (document.type === 'pdf' && typeof content === 'string') {
-					const binaryString = atob(content);
-					const bytes = new Uint8Array(binaryString.length);
-					for (let i = 0; i < binaryString.length; i++) {
-						bytes[i] = binaryString.charCodeAt(i);
-					}
-					content = new Blob([bytes], { type: 'application/pdf' });
-				}
-
-				store.put({ ...document, content });
-				tx.oncomplete = () => resolve();
-				tx.onerror = () => reject(tx.error);
-			};
-			request.onerror = () => reject(request.error);
-		});
-	}, doc);
+// Helper to get real PDF content as base64
+function getRealPdfBase64(): string {
+	const pdfPath = path.resolve(__dirname, '../../../test/fixtures/sample.pdf');
+	const pdfBuffer = fs.readFileSync(pdfPath);
+	return pdfBuffer.toString('base64');
 }
 
 test.describe('PDF to Markdown Conversion', () => {
@@ -171,24 +132,17 @@ test.describe('PDF to Markdown Conversion', () => {
 	});
 
 	test('shows loading state when conversion is in progress', async ({ page }) => {
-		// Pre-populate IndexedDB with a PDF document
+		// Use a real PDF for this test - pdf2md takes time to process
+		const pdfBase64 = getRealPdfBase64();
+
+		// Pre-populate IndexedDB with the real PDF
 		await addDocumentToIndexedDB(page, {
 			id: 'doc_123',
 			name: 'test-book.pdf',
 			type: 'pdf',
-			content: 'JVBERi0xLjQK',
-			size: 1024,
+			content: pdfBase64,
+			size: pdfBase64.length,
 			uploadedAt: new Date().toISOString()
-		});
-
-		// Mock the API to delay response
-		await page.route('/api/convert', async (route) => {
-			await new Promise((resolve) => setTimeout(resolve, 1000));
-			await route.fulfill({
-				status: 200,
-				contentType: 'application/json',
-				body: JSON.stringify({ markdown: '# Test' })
-			});
 		});
 
 		await page.goto('/convert');
@@ -201,33 +155,22 @@ test.describe('PDF to Markdown Conversion', () => {
 		const button = page.locator('button', { hasText: 'Convert to Markdown' });
 		await button.click();
 
-		// Should show loading state
+		// Should show loading state while pdf2md processes
 		await expect(page.getByText(/converting/i)).toBeVisible({ timeout: 1000 });
 	});
 
-	test('calls API with PDF content when convert is clicked', async ({ page }) => {
-		const pdfContent = 'JVBERi0xLjQK'; // Base64 encoded PDF
+	test('converts PDF using browser-side pdf2md library', async ({ page }) => {
+		// Use real PDF for conversion
+		const pdfBase64 = getRealPdfBase64();
 
-		// Pre-populate IndexedDB with a PDF document
+		// Pre-populate IndexedDB with the real PDF
 		await addDocumentToIndexedDB(page, {
 			id: 'doc_123',
 			name: 'test-book.pdf',
 			type: 'pdf',
-			content: pdfContent,
-			size: 1024,
+			content: pdfBase64,
+			size: pdfBase64.length,
 			uploadedAt: new Date().toISOString()
-		});
-
-		// Capture the API request
-		let capturedRequest: { content?: string; filename?: string } | null = null;
-		await page.route('/api/convert', async (route) => {
-			const request = route.request();
-			capturedRequest = JSON.parse(await request.postData() || '{}');
-			await route.fulfill({
-				status: 200,
-				contentType: 'application/json',
-				body: JSON.stringify({ markdown: '# Converted Content' })
-			});
 		});
 
 		await page.goto('/convert');
@@ -236,34 +179,26 @@ test.describe('PDF to Markdown Conversion', () => {
 		await page.locator('select').selectOption('doc_123');
 		await page.locator('button', { hasText: 'Convert to Markdown' }).click();
 
-		// Wait for API call to complete
-		await page.waitForResponse('/api/convert');
+		// Wait for conversion to complete - the result should appear
+		await expect(page.locator('.prose pre')).toBeVisible({ timeout: 30000 });
 
-		// Verify the API was called with correct data
-		expect(capturedRequest).not.toBeNull();
-		expect(capturedRequest?.content).toBe(pdfContent);
-		expect(capturedRequest?.filename).toBe('test-book.pdf');
+		// Verify markdown content was generated
+		const markdownPreview = await page.locator('.prose pre').textContent();
+		expect(markdownPreview).toBeTruthy();
+		expect(markdownPreview!.length).toBeGreaterThan(10);
 	});
 
 	test('displays conversion result as markdown preview', async ({ page }) => {
-		// Mock successful conversion with SSE format - set up before any navigation
-		await page.route('**/api/convert', async (route) => {
-			const sseResponse = 'data: {"type":"activity","message":"Converting PDF..."}\n\n' +
-				'data: {"type":"complete","markdown":"# Chapter 1\\n\\nThis is the converted content."}\n\n';
-			await route.fulfill({
-				status: 200,
-				contentType: 'text/event-stream',
-				body: sseResponse
-			});
-		});
+		// Use real PDF for conversion
+		const pdfBase64 = getRealPdfBase64();
 
-		// Pre-populate IndexedDB with a PDF document
+		// Pre-populate IndexedDB with the real PDF
 		await addDocumentToIndexedDB(page, {
 			id: 'doc_123',
 			name: 'test-book.pdf',
 			type: 'pdf',
-			content: 'JVBERi0xLjQK',
-			size: 1024,
+			content: pdfBase64,
+			size: pdfBase64.length,
 			uploadedAt: new Date().toISOString()
 		});
 
@@ -273,31 +208,26 @@ test.describe('PDF to Markdown Conversion', () => {
 		await page.locator('select').selectOption('doc_123');
 		await page.locator('button', { hasText: 'Convert to Markdown' }).click();
 
-		// Should display the converted markdown
-		await expect(page.getByText('Chapter 1')).toBeVisible({ timeout: 10000 });
-		await expect(page.getByText('This is the converted content.')).toBeVisible();
+		// Should display the converted markdown in a preview area
+		await expect(page.locator('.prose pre')).toBeVisible({ timeout: 30000 });
+
+		// Verify the preview contains some text (actual content depends on the PDF)
+		const previewText = await page.locator('.prose pre').textContent();
+		expect(previewText).toBeTruthy();
 	});
 
 	test('stores converted document in IndexedDB', async ({ page }) => {
-		// Pre-populate IndexedDB with a PDF document
+		// Use real PDF for conversion
+		const pdfBase64 = getRealPdfBase64();
+
+		// Pre-populate IndexedDB with the real PDF
 		await addDocumentToIndexedDB(page, {
 			id: 'doc_123',
 			name: 'test-book.pdf',
 			type: 'pdf',
-			content: 'JVBERi0xLjQK',
-			size: 1024,
+			content: pdfBase64,
+			size: pdfBase64.length,
 			uploadedAt: new Date().toISOString()
-		});
-
-		// Mock successful conversion with SSE format
-		await page.route('/api/convert', async (route) => {
-			const sseResponse = 'data: {"type":"activity","message":"Starting conversion..."}\n\n' +
-				'data: {"type":"complete","markdown":"# Converted Document"}\n\n';
-			await route.fulfill({
-				status: 200,
-				contentType: 'text/event-stream',
-				body: sseResponse
-			});
 		});
 
 		await page.goto('/convert');
@@ -306,56 +236,37 @@ test.describe('PDF to Markdown Conversion', () => {
 		await page.locator('select').selectOption('doc_123');
 		await page.locator('button', { hasText: 'Convert to Markdown' }).click();
 
-		// Wait for conversion and storage
-		await page.waitForResponse('/api/convert');
-		await page.waitForTimeout(500); // Wait for state update
+		// Wait for conversion to complete (preview appears)
+		await expect(page.locator('.prose pre')).toBeVisible({ timeout: 30000 });
 
 		// Check IndexedDB for the new document
-		const docs = await page.evaluate(async () => {
-			return new Promise((resolve) => {
-				const request = indexedDB.open('book-translate-db', 1);
-				request.onsuccess = () => {
-					const db = request.result;
-					const tx = db.transaction('documents', 'readonly');
-					const store = tx.objectStore('documents');
-					const getAllRequest = store.getAll();
-					getAllRequest.onsuccess = () => resolve(getAllRequest.result);
-					getAllRequest.onerror = () => resolve([]);
-				};
-				request.onerror = () => resolve([]);
-			});
-		});
+		const docs = await getAllDocumentsFromIndexedDB(page);
 
 		// Should have 2 documents now: original PDF + converted markdown
-		expect((docs as any[]).length).toBe(2);
+		expect(docs.length).toBe(2);
 
-		const convertedDoc = (docs as any[]).find((d: any) => d.type === 'markdown');
+		const convertedDoc = docs.find((d) => d.type === 'markdown');
 		expect(convertedDoc).toBeDefined();
-		expect(convertedDoc.name).toContain('test-book');
-		expect(convertedDoc.content).toBe('# Converted Document');
+		expect(convertedDoc!.name).toContain('test-book');
+		expect(convertedDoc!.content).toBeTruthy();
 
 		// Verify phase is set correctly
-		expect(convertedDoc.phase).toBe('converted');
-		expect(convertedDoc.sourceDocumentId).toBe('doc_123');
+		expect(convertedDoc!.phase).toBe('converted');
+		expect(convertedDoc!.sourceDocumentId).toBe('doc_123');
 	});
 
 	test('displays error message when conversion fails', async ({ page }) => {
-		// Mock failed conversion - set up before any navigation
-		await page.route('**/api/convert', async (route) => {
-			await route.fulfill({
-				status: 500,
-				contentType: 'application/json',
-				body: JSON.stringify({ error: 'Invalid PDF format' })
-			});
-		});
+		// Use invalid/corrupt PDF content to trigger an error in pdf2md
+		// This is just garbage data that is not a valid PDF
+		const invalidPdfContent = Buffer.from('This is not a valid PDF file content').toString('base64');
 
-		// Pre-populate IndexedDB with a PDF document
+		// Pre-populate IndexedDB with invalid PDF content
 		await addDocumentToIndexedDB(page, {
 			id: 'doc_123',
 			name: 'corrupt.pdf',
 			type: 'pdf',
-			content: 'JVBERi0xLjQK',
-			size: 1024,
+			content: invalidPdfContent,
+			size: 100,
 			uploadedAt: new Date().toISOString()
 		});
 
@@ -365,27 +276,21 @@ test.describe('PDF to Markdown Conversion', () => {
 		await page.locator('select').selectOption('doc_123');
 		await page.locator('button', { hasText: 'Convert to Markdown' }).click();
 
-		// Should display error message
-		await expect(page.getByText(/invalid pdf format/i)).toBeVisible({ timeout: 10000 });
+		// Should display error message (pdf2md will fail on invalid content)
+		await expect(page.getByText(/error|failed|invalid/i)).toBeVisible({ timeout: 10000 });
 	});
 
 	test('button returns to enabled state after conversion completes', async ({ page }) => {
-		// Mock successful conversion - set up before any navigation
-		await page.route('**/api/convert', async (route) => {
-			await route.fulfill({
-				status: 200,
-				contentType: 'application/json',
-				body: JSON.stringify({ markdown: '# Done' })
-			});
-		});
+		// Use real PDF for conversion
+		const pdfBase64 = getRealPdfBase64();
 
-		// Pre-populate IndexedDB with a PDF document
+		// Pre-populate IndexedDB with the real PDF
 		await addDocumentToIndexedDB(page, {
 			id: 'doc_123',
 			name: 'test-book.pdf',
 			type: 'pdf',
-			content: 'JVBERi0xLjQK',
-			size: 1024,
+			content: pdfBase64,
+			size: pdfBase64.length,
 			uploadedAt: new Date().toISOString()
 		});
 
@@ -395,6 +300,9 @@ test.describe('PDF to Markdown Conversion', () => {
 		await page.locator('select').selectOption('doc_123');
 		const button = page.locator('button', { hasText: 'Convert to Markdown' });
 		await button.click();
+
+		// Wait for conversion to complete (preview appears)
+		await expect(page.locator('.prose pre')).toBeVisible({ timeout: 30000 });
 
 		// Button should return to normal state after conversion
 		await expect(button).toBeEnabled({ timeout: 10000 });

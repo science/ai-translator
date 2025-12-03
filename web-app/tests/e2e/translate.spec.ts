@@ -1,39 +1,12 @@
 import { test, expect } from '@playwright/test';
-
-// Helper to clear all storage
-async function clearAllStorage(page: any) {
-	await page.evaluate(async () => {
-		localStorage.clear();
-		const databases = await indexedDB.databases();
-		for (const db of databases) {
-			if (db.name) indexedDB.deleteDatabase(db.name);
-		}
-	});
-}
-
-// Helper to add a document to IndexedDB
-async function addDocumentToIndexedDB(page: any, doc: any) {
-	await page.evaluate(async (document: any) => {
-		return new Promise<void>((resolve, reject) => {
-			const request = indexedDB.open('book-translate-db', 1);
-			request.onupgradeneeded = () => {
-				const db = request.result;
-				if (!db.objectStoreNames.contains('documents')) {
-					db.createObjectStore('documents', { keyPath: 'id' });
-				}
-			};
-			request.onsuccess = () => {
-				const db = request.result;
-				const tx = db.transaction('documents', 'readwrite');
-				const store = tx.objectStore('documents');
-				store.put(document);
-				tx.oncomplete = () => resolve();
-				tx.onerror = () => reject(tx.error);
-			};
-			request.onerror = () => reject(request.error);
-		});
-	}, doc);
-}
+import {
+	clearAllStorage,
+	addDocumentToIndexedDB,
+	setApiKey,
+	mockOpenAICompletion,
+	mockOpenAIError,
+	getAllDocumentsFromIndexedDB
+} from './helpers';
 
 test.describe('Document Translation', () => {
 	test.beforeEach(async ({ page }) => {
@@ -169,15 +142,9 @@ test.describe('Document Translation', () => {
 			phase: 'uploaded'
 		});
 
-		// Mock the API to delay response
-		await page.route('/api/translate', async (route) => {
-			await new Promise((resolve) => setTimeout(resolve, 1000));
-			await route.fulfill({
-				status: 200,
-				contentType: 'text/event-stream',
-				body: 'data: {"type":"complete","japaneseOnly":"# テストブック","bilingual":"# Test Book\\n\\n---\\n\\n# テストブック"}\n\n'
-			});
-		});
+		// Set API key and mock OpenAI with delay (jsonWrap for contextAware translation)
+		await setApiKey(page);
+		await mockOpenAICompletion(page, '# テストブック\n\nコンテンツを翻訳する。', { delay: 2000, jsonWrap: true });
 
 		await page.goto('/translate');
 
@@ -189,11 +156,11 @@ test.describe('Document Translation', () => {
 		const button = page.locator('button', { hasText: 'Start Translation' });
 		await button.click();
 
-		// Should show loading state
-		await expect(page.getByText(/translating|processing/i)).toBeVisible({ timeout: 1000 });
+		// Should show loading state - button text changes to "Translating..."
+		await expect(page.getByText('Translating...')).toBeVisible({ timeout: 1000 });
 	});
 
-	test('calls API with document content when translate is clicked', async ({ page }) => {
+	test('calls OpenAI API with document content when translate is clicked', async ({ page }) => {
 		const markdownContent = '# Test Book\n\nContent to translate.';
 
 		// Pre-populate IndexedDB with a markdown document
@@ -207,17 +174,9 @@ test.describe('Document Translation', () => {
 			phase: 'uploaded'
 		});
 
-		// Capture the API request
-		let capturedRequest: { content?: string; filename?: string; model?: string; chunkSize?: number; reasoningEffort?: string } | null = null;
-		await page.route('/api/translate', async (route) => {
-			const request = route.request();
-			capturedRequest = JSON.parse(await request.postData() || '{}');
-			await route.fulfill({
-				status: 200,
-				contentType: 'text/event-stream',
-				body: 'data: {"type":"complete","japaneseOnly":"# テストブック","bilingual":"# Test Book\\n\\n---\\n\\n# テストブック"}\n\n'
-			});
-		});
+		// Set API key and mock OpenAI, capturing the request (jsonWrap for contextAware translation)
+		await setApiKey(page);
+		const getRequest = await mockOpenAICompletion(page, '# テストブック\n\n翻訳するコンテンツ。', { jsonWrap: true });
 
 		await page.goto('/translate');
 
@@ -225,30 +184,19 @@ test.describe('Document Translation', () => {
 		await page.locator('select').first().selectOption('doc_md_123');
 		await page.locator('button', { hasText: 'Start Translation' }).click();
 
-		// Wait for API call to complete
-		await page.waitForResponse('/api/translate');
+		// Wait for result tabs to appear
+		await expect(page.getByRole('tab', { name: /japanese only/i })).toBeVisible({ timeout: 10000 });
 
-		// Verify the API was called with correct data
+		// Verify the OpenAI API was called
+		const capturedRequest = getRequest();
 		expect(capturedRequest).not.toBeNull();
-		expect(capturedRequest?.content).toBe(markdownContent);
-		expect(capturedRequest?.filename).toBe('test-book.md');
 		expect(capturedRequest?.model).toBe('gpt-5-mini');
-		expect(capturedRequest?.chunkSize).toBe(4000);
-		expect(capturedRequest?.reasoningEffort).toBe('medium');
+		// The message should contain the document content
+		const userMessage = capturedRequest?.messages?.find((m) => m.role === 'user');
+		expect(userMessage?.content).toContain('Content to translate');
 	});
 
 	test('displays translation results with both versions', async ({ page }) => {
-		// Mock successful translation with SSE format
-		await page.route('**/api/translate', async (route) => {
-			const sseResponse = 'data: {"type":"progress","percentage":100,"message":"Translation complete"}\n\n' +
-				'data: {"type":"complete","japaneseOnly":"# 第一章\\n\\nこれは翻訳されたコンテンツです。","bilingual":"# Chapter 1\\n\\n---\\n\\n# 第一章\\n\\n---\\n\\nThis is the content.\\n\\n---\\n\\nこれは翻訳されたコンテンツです。"}\n\n';
-			await route.fulfill({
-				status: 200,
-				contentType: 'text/event-stream',
-				body: sseResponse
-			});
-		});
-
 		// Pre-populate IndexedDB with a markdown document
 		await addDocumentToIndexedDB(page, {
 			id: 'doc_md_123',
@@ -259,6 +207,10 @@ test.describe('Document Translation', () => {
 			uploadedAt: new Date().toISOString(),
 			phase: 'uploaded'
 		});
+
+		// Set API key and mock OpenAI (jsonWrap for contextAware translation)
+		await setApiKey(page);
+		await mockOpenAICompletion(page, '# 第一章\n\nこれは翻訳されたコンテンツです。', { jsonWrap: true });
 
 		await page.goto('/translate');
 
@@ -286,16 +238,9 @@ test.describe('Document Translation', () => {
 			phase: 'uploaded'
 		});
 
-		// Mock successful translation with SSE format
-		await page.route('/api/translate', async (route) => {
-			const sseResponse = 'data: {"type":"progress","percentage":50,"message":"Processing chunk 1/2..."}\n\n' +
-				'data: {"type":"complete","japaneseOnly":"# テスト","bilingual":"# Test\\n\\n---\\n\\n# テスト"}\n\n';
-			await route.fulfill({
-				status: 200,
-				contentType: 'text/event-stream',
-				body: sseResponse
-			});
-		});
+		// Set API key and mock OpenAI (jsonWrap for contextAware translation)
+		await setApiKey(page);
+		await mockOpenAICompletion(page, '# テスト', { jsonWrap: true });
 
 		await page.goto('/translate');
 
@@ -303,56 +248,37 @@ test.describe('Document Translation', () => {
 		await page.locator('select').first().selectOption('doc_md_123');
 		await page.locator('button', { hasText: 'Start Translation' }).click();
 
-		// Wait for translation and storage
-		await page.waitForResponse('/api/translate');
-		await page.waitForTimeout(500); // Wait for state update
-
-		// Check IndexedDB for the new documents
-		const docs = await page.evaluate(async () => {
-			return new Promise((resolve) => {
-				const request = indexedDB.open('book-translate-db', 1);
-				request.onsuccess = () => {
-					const db = request.result;
-					const tx = db.transaction('documents', 'readonly');
-					const store = tx.objectStore('documents');
-					const getAllRequest = store.getAll();
-					getAllRequest.onsuccess = () => resolve(getAllRequest.result);
-					getAllRequest.onerror = () => resolve([]);
-				};
-				request.onerror = () => resolve([]);
-			});
+		// Wait for translation to complete (button returns to normal state)
+		await expect(page.locator('button', { hasText: 'Start Translation' })).toBeEnabled({
+			timeout: 10000
 		});
 
+		// Check IndexedDB for the new documents
+		const docs = await getAllDocumentsFromIndexedDB(page);
+
 		// Should have 3 documents now: original + japanese-only + bilingual
-		expect((docs as any[]).length).toBe(3);
+		expect(docs.length).toBe(3);
 
-		const japaneseDoc = (docs as any[]).find((d: any) => d.name.includes('-ja.md'));
+		const japaneseDoc = docs.find((d) => d.name.includes('-ja.md'));
 		expect(japaneseDoc).toBeDefined();
-		expect(japaneseDoc.name).toBe('test-book-ja.md');
-		expect(japaneseDoc.content).toBe('# テスト');
-		expect(japaneseDoc.phase).toBe('translated');
-		expect(japaneseDoc.variant).toBe('japanese-only');
-		expect(japaneseDoc.sourceDocumentId).toBe('doc_md_123');
+		expect(japaneseDoc!.name).toBe('test-book-ja.md');
+		expect(japaneseDoc!.content).toBe('# テスト');
+		expect(japaneseDoc!.phase).toBe('translated');
+		expect(japaneseDoc!.variant).toBe('japanese-only');
+		expect(japaneseDoc!.sourceDocumentId).toBe('doc_md_123');
 
-		const bilingualDoc = (docs as any[]).find((d: any) => d.name.includes('-bilingual.md'));
+		const bilingualDoc = docs.find((d) => d.name.includes('-bilingual.md'));
 		expect(bilingualDoc).toBeDefined();
-		expect(bilingualDoc.name).toBe('test-book-bilingual.md');
-		expect(bilingualDoc.content).toBe('# Test\n\n---\n\n# テスト');
-		expect(bilingualDoc.phase).toBe('translated');
-		expect(bilingualDoc.variant).toBe('bilingual');
-		expect(bilingualDoc.sourceDocumentId).toBe('doc_md_123');
+		expect(bilingualDoc!.name).toBe('test-book-bilingual.md');
+		// Bilingual content has original + translated
+		expect(bilingualDoc!.content).toContain('# Test');
+		expect(bilingualDoc!.content).toContain('# テスト');
+		expect(bilingualDoc!.phase).toBe('translated');
+		expect(bilingualDoc!.variant).toBe('bilingual');
+		expect(bilingualDoc!.sourceDocumentId).toBe('doc_md_123');
 	});
 
 	test('displays error message when translation fails', async ({ page }) => {
-		// Mock failed translation
-		await page.route('**/api/translate', async (route) => {
-			await route.fulfill({
-				status: 500,
-				contentType: 'application/json',
-				body: JSON.stringify({ error: 'API key invalid' })
-			});
-		});
-
 		// Pre-populate IndexedDB with a markdown document
 		await addDocumentToIndexedDB(page, {
 			id: 'doc_md_123',
@@ -363,6 +289,10 @@ test.describe('Document Translation', () => {
 			uploadedAt: new Date().toISOString(),
 			phase: 'uploaded'
 		});
+
+		// Set API key and mock OpenAI error
+		await setApiKey(page);
+		await mockOpenAIError(page, 'Invalid API key', 401);
 
 		await page.goto('/translate');
 
@@ -370,20 +300,11 @@ test.describe('Document Translation', () => {
 		await page.locator('select').first().selectOption('doc_md_123');
 		await page.locator('button', { hasText: 'Start Translation' }).click();
 
-		// Should display error message
-		await expect(page.getByText(/api key invalid/i)).toBeVisible({ timeout: 10000 });
+		// Should display error message (error text from browser service)
+		await expect(page.getByText(/invalid api key|error|failed/i)).toBeVisible({ timeout: 10000 });
 	});
 
 	test('button returns to enabled state after translation completes', async ({ page }) => {
-		// Mock successful translation
-		await page.route('**/api/translate', async (route) => {
-			await route.fulfill({
-				status: 200,
-				contentType: 'text/event-stream',
-				body: 'data: {"type":"complete","japaneseOnly":"# テスト","bilingual":"# Test\\n\\n---\\n\\n# テスト"}\n\n'
-			});
-		});
-
 		// Pre-populate IndexedDB with a markdown document
 		await addDocumentToIndexedDB(page, {
 			id: 'doc_md_123',
@@ -394,6 +315,10 @@ test.describe('Document Translation', () => {
 			uploadedAt: new Date().toISOString(),
 			phase: 'uploaded'
 		});
+
+		// Set API key and mock OpenAI (jsonWrap for contextAware translation)
+		await setApiKey(page);
+		await mockOpenAICompletion(page, '# テスト', { jsonWrap: true });
 
 		await page.goto('/translate');
 
@@ -408,15 +333,6 @@ test.describe('Document Translation', () => {
 	});
 
 	test('can switch between Japanese-only and bilingual views', async ({ page }) => {
-		// Mock successful translation
-		await page.route('**/api/translate', async (route) => {
-			await route.fulfill({
-				status: 200,
-				contentType: 'text/event-stream',
-				body: 'data: {"type":"complete","japaneseOnly":"# 日本語だけ","bilingual":"# English Only\\n\\n---\\n\\n# 日本語だけ"}\n\n'
-			});
-		});
-
 		// Pre-populate IndexedDB with a markdown document
 		await addDocumentToIndexedDB(page, {
 			id: 'doc_md_123',
@@ -427,6 +343,10 @@ test.describe('Document Translation', () => {
 			uploadedAt: new Date().toISOString(),
 			phase: 'uploaded'
 		});
+
+		// Set API key and mock OpenAI (jsonWrap for contextAware translation)
+		await setApiKey(page);
+		await mockOpenAICompletion(page, '# 日本語だけ', { jsonWrap: true });
 
 		await page.goto('/translate');
 
@@ -543,56 +463,7 @@ test.describe('Model Selection', () => {
 		await expect(reasoningLabel).not.toBeVisible();
 	});
 
-	test('API call includes reasoningEffort when 5-series model is selected', async ({ page }) => {
-		const markdownContent = '# Test Book\n\nContent to translate.';
-
-		// Pre-populate IndexedDB with a markdown document
-		await addDocumentToIndexedDB(page, {
-			id: 'doc_md_123',
-			name: 'test-book.md',
-			type: 'markdown',
-			content: markdownContent,
-			size: markdownContent.length,
-			uploadedAt: new Date().toISOString(),
-			phase: 'uploaded'
-		});
-
-		// Capture the API request
-		let capturedRequest: any = null;
-		await page.route('/api/translate', async (route) => {
-			const request = route.request();
-			capturedRequest = JSON.parse((await request.postData()) || '{}');
-			await route.fulfill({
-				status: 200,
-				contentType: 'text/event-stream',
-				body: 'data: {"type":"complete","japaneseOnly":"# テストブック","bilingual":"# Test Book\\n\\n---\\n\\n# テストブック"}\n\n'
-			});
-		});
-
-		await page.goto('/translate');
-		await page.waitForLoadState('networkidle');
-
-		// Select gpt-5.1 model
-		const modelSelect = page.getByTestId('model-select');
-		await modelSelect.click();
-		await modelSelect.selectOption('gpt-5.1');
-		await expect(modelSelect).toHaveValue('gpt-5.1');
-
-		// Select the document
-		await page.locator('select').first().selectOption('doc_md_123');
-
-		// Click translate and wait for API call simultaneously
-		await Promise.all([
-			page.waitForResponse('/api/translate'),
-			page.locator('button', { hasText: 'Start Translation' }).click()
-		]);
-
-		// Should include reasoningEffort
-		expect(capturedRequest?.model).toBe('gpt-5.1');
-		expect(capturedRequest?.reasoningEffort).toBe('medium');
-	});
-
-	test('API call does NOT include reasoningEffort when 4-series model is selected', async ({
+	test('OpenAI API call includes reasoning_effort when 5-series model is selected', async ({
 		page
 	}) => {
 		const markdownContent = '# Test Book\n\nContent to translate.';
@@ -608,17 +479,53 @@ test.describe('Model Selection', () => {
 			phase: 'uploaded'
 		});
 
-		// Capture the API request
-		let capturedRequest: any = null;
-		await page.route('/api/translate', async (route) => {
-			const request = route.request();
-			capturedRequest = JSON.parse((await request.postData()) || '{}');
-			await route.fulfill({
-				status: 200,
-				contentType: 'text/event-stream',
-				body: 'data: {"type":"complete","japaneseOnly":"# テストブック","bilingual":"# Test Book\\n\\n---\\n\\n# テストブック"}\n\n'
-			});
+		// Set API key and mock OpenAI, capturing the request (jsonWrap for contextAware translation)
+		await setApiKey(page);
+		const getRequest = await mockOpenAICompletion(page, '# テストブック\n\n翻訳するコンテンツ。', { jsonWrap: true });
+
+		await page.goto('/translate');
+		await page.waitForLoadState('networkidle');
+
+		// Select gpt-5.1 model
+		const modelSelect = page.getByTestId('model-select');
+		await modelSelect.click();
+		await modelSelect.selectOption('gpt-5.1');
+		await expect(modelSelect).toHaveValue('gpt-5.1');
+
+		// Select the document
+		await page.locator('select').first().selectOption('doc_md_123');
+
+		// Click translate
+		await page.locator('button', { hasText: 'Start Translation' }).click();
+
+		// Wait for result
+		await expect(page.getByRole('tab', { name: /japanese only/i })).toBeVisible({ timeout: 10000 });
+
+		// Verify the OpenAI API was called with reasoning_effort
+		const capturedRequest = getRequest();
+		expect(capturedRequest?.model).toBe('gpt-5.1');
+		expect(capturedRequest?.reasoning_effort).toBe('medium');
+	});
+
+	test('OpenAI API call does NOT include reasoning_effort when 4-series model is selected', async ({
+		page
+	}) => {
+		const markdownContent = '# Test Book\n\nContent to translate.';
+
+		// Pre-populate IndexedDB with a markdown document
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_123',
+			name: 'test-book.md',
+			type: 'markdown',
+			content: markdownContent,
+			size: markdownContent.length,
+			uploadedAt: new Date().toISOString(),
+			phase: 'uploaded'
 		});
+
+		// Set API key and mock OpenAI, capturing the request (jsonWrap for contextAware translation)
+		await setApiKey(page);
+		const getRequest = await mockOpenAICompletion(page, '# テストブック\n\n翻訳するコンテンツ。', { jsonWrap: true });
 
 		await page.goto('/translate');
 		await page.waitForLoadState('networkidle');
@@ -632,15 +539,16 @@ test.describe('Model Selection', () => {
 		// Select the document
 		await page.locator('select').first().selectOption('doc_md_123');
 
-		// Click translate and wait for API call simultaneously
-		await Promise.all([
-			page.waitForResponse('/api/translate'),
-			page.locator('button', { hasText: 'Start Translation' }).click()
-		]);
+		// Click translate
+		await page.locator('button', { hasText: 'Start Translation' }).click();
 
-		// Should NOT include reasoningEffort
+		// Wait for result
+		await expect(page.getByRole('tab', { name: /japanese only/i })).toBeVisible({ timeout: 10000 });
+
+		// Verify the OpenAI API was called WITHOUT reasoning_effort
+		const capturedRequest = getRequest();
 		expect(capturedRequest?.model).toBe('gpt-4.1');
-		expect(capturedRequest?.reasoningEffort).toBeUndefined();
+		expect(capturedRequest?.reasoning_effort).toBeUndefined();
 	});
 });
 

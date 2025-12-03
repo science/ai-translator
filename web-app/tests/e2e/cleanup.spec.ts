@@ -1,39 +1,12 @@
 import { test, expect } from '@playwright/test';
-
-// Helper to clear all storage
-async function clearAllStorage(page: any) {
-	await page.evaluate(async () => {
-		localStorage.clear();
-		const databases = await indexedDB.databases();
-		for (const db of databases) {
-			if (db.name) indexedDB.deleteDatabase(db.name);
-		}
-	});
-}
-
-// Helper to add a document to IndexedDB
-async function addDocumentToIndexedDB(page: any, doc: any) {
-	await page.evaluate(async (document: any) => {
-		return new Promise<void>((resolve, reject) => {
-			const request = indexedDB.open('book-translate-db', 1);
-			request.onupgradeneeded = () => {
-				const db = request.result;
-				if (!db.objectStoreNames.contains('documents')) {
-					db.createObjectStore('documents', { keyPath: 'id' });
-				}
-			};
-			request.onsuccess = () => {
-				const db = request.result;
-				const tx = db.transaction('documents', 'readwrite');
-				const store = tx.objectStore('documents');
-				store.put(document);
-				tx.oncomplete = () => resolve();
-				tx.onerror = () => reject(tx.error);
-			};
-			request.onerror = () => reject(request.error);
-		});
-	}, doc);
-}
+import {
+	clearAllStorage,
+	addDocumentToIndexedDB,
+	setApiKey,
+	mockOpenAICompletion,
+	mockOpenAIError,
+	getAllDocumentsFromIndexedDB
+} from './helpers';
 
 test.describe('Document Cleanup (Rectification)', () => {
 	test.beforeEach(async ({ page }) => {
@@ -163,14 +136,10 @@ test.describe('Document Cleanup (Rectification)', () => {
 			uploadedAt: new Date().toISOString()
 		});
 
-		// Mock the API to delay response
-		await page.route('/api/cleanup', async (route) => {
-			await new Promise((resolve) => setTimeout(resolve, 1000));
-			await route.fulfill({
-				status: 200,
-				contentType: 'application/json',
-				body: JSON.stringify({ markdown: '# Test Book\n\nSome content with OCR errors fixed.' })
-			});
+		// Set API key and mock OpenAI with delay
+		await setApiKey(page);
+		await mockOpenAICompletion(page, '# Test Book\n\nSome content with OCR errors fixed.', {
+			delay: 2000
 		});
 
 		await page.goto('/cleanup');
@@ -183,11 +152,11 @@ test.describe('Document Cleanup (Rectification)', () => {
 		const button = page.locator('button', { hasText: 'Start Cleanup' });
 		await button.click();
 
-		// Should show loading state
-		await expect(page.getByText(/cleaning|processing/i)).toBeVisible({ timeout: 1000 });
+		// Should show loading state - button text changes to "Cleaning..."
+		await expect(page.getByText('Cleaning...')).toBeVisible({ timeout: 1000 });
 	});
 
-	test('calls API with document content when cleanup is clicked', async ({ page }) => {
+	test('calls OpenAI API with document content when cleanup is clicked', async ({ page }) => {
 		const markdownContent = '# Test Book\n\nontents with errors.';
 
 		// Pre-populate IndexedDB with a markdown document
@@ -200,17 +169,12 @@ test.describe('Document Cleanup (Rectification)', () => {
 			uploadedAt: new Date().toISOString()
 		});
 
-		// Capture the API request
-		let capturedRequest: { content?: string; filename?: string; model?: string; chunkSize?: number } | null = null;
-		await page.route('/api/cleanup', async (route) => {
-			const request = route.request();
-			capturedRequest = JSON.parse(await request.postData() || '{}');
-			await route.fulfill({
-				status: 200,
-				contentType: 'application/json',
-				body: JSON.stringify({ markdown: '# Test Book\n\nContents with errors fixed.' })
-			});
-		});
+		// Set API key and mock OpenAI, capturing the request
+		await setApiKey(page);
+		const getRequest = await mockOpenAICompletion(
+			page,
+			'# Test Book\n\nContents with errors fixed.'
+		);
 
 		await page.goto('/cleanup');
 
@@ -218,29 +182,19 @@ test.describe('Document Cleanup (Rectification)', () => {
 		await page.locator('select').first().selectOption('doc_md_123');
 		await page.locator('button', { hasText: 'Start Cleanup' }).click();
 
-		// Wait for API call to complete
-		await page.waitForResponse('/api/cleanup');
+		// Wait for result to appear
+		await expect(page.getByText('Contents with errors fixed.')).toBeVisible({ timeout: 10000 });
 
-		// Verify the API was called with correct data
+		// Verify the OpenAI API was called
+		const capturedRequest = getRequest();
 		expect(capturedRequest).not.toBeNull();
-		expect(capturedRequest?.content).toBe(markdownContent);
-		expect(capturedRequest?.filename).toBe('test-book.md');
 		expect(capturedRequest?.model).toBe('gpt-5-mini');
-		expect(capturedRequest?.chunkSize).toBe(4000);
+		// The message should contain the document content
+		const userMessage = capturedRequest?.messages?.find((m) => m.role === 'user');
+		expect(userMessage?.content).toContain('ontents with errors');
 	});
 
 	test('displays cleanup result as markdown preview', async ({ page }) => {
-		// Mock successful cleanup with SSE format - set up before any navigation
-		await page.route('**/api/cleanup', async (route) => {
-			const sseResponse = 'data: {"type":"progress","percentage":100,"message":"Cleanup complete"}\n\n' +
-				'data: {"type":"complete","markdown":"# Chapter 1\\n\\nThis is the cleaned content."}\n\n';
-			await route.fulfill({
-				status: 200,
-				contentType: 'text/event-stream',
-				body: sseResponse
-			});
-		});
-
 		// Pre-populate IndexedDB with a markdown document
 		await addDocumentToIndexedDB(page, {
 			id: 'doc_md_123',
@@ -250,6 +204,10 @@ test.describe('Document Cleanup (Rectification)', () => {
 			size: 40,
 			uploadedAt: new Date().toISOString()
 		});
+
+		// Set API key and mock OpenAI
+		await setApiKey(page);
+		await mockOpenAICompletion(page, '# Chapter 1\n\nThis is the cleaned content.');
 
 		await page.goto('/cleanup');
 
@@ -273,16 +231,9 @@ test.describe('Document Cleanup (Rectification)', () => {
 			uploadedAt: new Date().toISOString()
 		});
 
-		// Mock successful cleanup with SSE format
-		await page.route('/api/cleanup', async (route) => {
-			const sseResponse = 'data: {"type":"progress","percentage":50,"message":"Processing chunk 1/2..."}\n\n' +
-				'data: {"type":"complete","markdown":"# Test Book"}\n\n';
-			await route.fulfill({
-				status: 200,
-				contentType: 'text/event-stream',
-				body: sseResponse
-			});
-		});
+		// Set API key and mock OpenAI
+		await setApiKey(page);
+		await mockOpenAICompletion(page, '# Test Book');
 
 		await page.goto('/cleanup');
 
@@ -290,49 +241,28 @@ test.describe('Document Cleanup (Rectification)', () => {
 		await page.locator('select').first().selectOption('doc_md_123');
 		await page.locator('button', { hasText: 'Start Cleanup' }).click();
 
-		// Wait for cleanup and storage
-		await page.waitForResponse('/api/cleanup');
-		await page.waitForTimeout(500); // Wait for state update
-
-		// Check IndexedDB for the new document
-		const docs = await page.evaluate(async () => {
-			return new Promise((resolve) => {
-				const request = indexedDB.open('book-translate-db', 1);
-				request.onsuccess = () => {
-					const db = request.result;
-					const tx = db.transaction('documents', 'readonly');
-					const store = tx.objectStore('documents');
-					const getAllRequest = store.getAll();
-					getAllRequest.onsuccess = () => resolve(getAllRequest.result);
-					getAllRequest.onerror = () => resolve([]);
-				};
-				request.onerror = () => resolve([]);
-			});
+		// Wait for cleanup to complete (button returns to normal state)
+		await expect(page.locator('button', { hasText: 'Start Cleanup' })).toBeEnabled({
+			timeout: 10000
 		});
 
-		// Should have 2 documents now: original + cleaned
-		expect((docs as any[]).length).toBe(2);
+		// Check IndexedDB for the new document
+		const docs = await getAllDocumentsFromIndexedDB(page);
 
-		const cleanedDoc = (docs as any[]).find((d: any) => d.name.includes('rectified'));
+		// Should have 2 documents now: original + cleaned
+		expect(docs.length).toBe(2);
+
+		const cleanedDoc = docs.find((d) => d.name.includes('rectified'));
 		expect(cleanedDoc).toBeDefined();
-		expect(cleanedDoc.name).toBe('test-book-rectified.md');
-		expect(cleanedDoc.content).toBe('# Test Book');
+		expect(cleanedDoc!.name).toBe('test-book-rectified.md');
+		expect(cleanedDoc!.content).toBe('# Test Book');
 
 		// Verify phase is set correctly
-		expect(cleanedDoc.phase).toBe('cleaned');
-		expect(cleanedDoc.sourceDocumentId).toBe('doc_md_123');
+		expect(cleanedDoc!.phase).toBe('cleaned');
+		expect(cleanedDoc!.sourceDocumentId).toBe('doc_md_123');
 	});
 
 	test('displays error message when cleanup fails', async ({ page }) => {
-		// Mock failed cleanup - set up before any navigation
-		await page.route('**/api/cleanup', async (route) => {
-			await route.fulfill({
-				status: 500,
-				contentType: 'application/json',
-				body: JSON.stringify({ error: 'API key invalid' })
-			});
-		});
-
 		// Pre-populate IndexedDB with a markdown document
 		await addDocumentToIndexedDB(page, {
 			id: 'doc_md_123',
@@ -343,26 +273,21 @@ test.describe('Document Cleanup (Rectification)', () => {
 			uploadedAt: new Date().toISOString()
 		});
 
+		// Set API key and mock OpenAI error
+		await setApiKey(page);
+		await mockOpenAIError(page, 'Invalid API key', 401);
+
 		await page.goto('/cleanup');
 
 		// Select the document and click cleanup
 		await page.locator('select').first().selectOption('doc_md_123');
 		await page.locator('button', { hasText: 'Start Cleanup' }).click();
 
-		// Should display error message
-		await expect(page.getByText(/api key invalid/i)).toBeVisible({ timeout: 10000 });
+		// Should display error message (error text from browser service)
+		await expect(page.getByText(/invalid api key|error|failed/i)).toBeVisible({ timeout: 10000 });
 	});
 
 	test('button returns to enabled state after cleanup completes', async ({ page }) => {
-		// Mock successful cleanup - set up before any navigation
-		await page.route('**/api/cleanup', async (route) => {
-			await route.fulfill({
-				status: 200,
-				contentType: 'application/json',
-				body: JSON.stringify({ markdown: '# Done' })
-			});
-		});
-
 		// Pre-populate IndexedDB with a markdown document
 		await addDocumentToIndexedDB(page, {
 			id: 'doc_md_123',
@@ -372,6 +297,10 @@ test.describe('Document Cleanup (Rectification)', () => {
 			size: 5,
 			uploadedAt: new Date().toISOString()
 		});
+
+		// Set API key and mock OpenAI
+		await setApiKey(page);
+		await mockOpenAICompletion(page, '# Done');
 
 		await page.goto('/cleanup');
 
@@ -401,11 +330,24 @@ test.describe('Document Cleanup (Rectification)', () => {
 		expect(options).toEqual(['gpt-5.1', 'gpt-5-mini', 'gpt-4.1', 'gpt-4.1-mini']);
 	});
 
-	test('cleanup page does not have reasoning effort selector', async ({ page }) => {
+	test('cleanup page shows reasoning effort selector for 5-series models', async ({ page }) => {
 		await page.goto('/cleanup');
+		await page.waitForLoadState('networkidle');
 
-		// Cleanup doesn't use reasoning effort at all
+		// Default model is gpt-5-mini, so reasoning effort should be visible
 		const reasoningLabel = page.getByText('Reasoning Effort');
+		await expect(reasoningLabel).toBeVisible();
+
+		// Select a non-5 series model
+		const modelSelect = page.locator('select').nth(1);
+		await expect(modelSelect).toHaveValue('gpt-5-mini'); // Verify default
+		await modelSelect.click();
+		await modelSelect.selectOption('gpt-4.1');
+
+		// Wait for selection to complete
+		await expect(modelSelect).toHaveValue('gpt-4.1');
+
+		// Reasoning effort should now be hidden
 		await expect(reasoningLabel).not.toBeVisible();
 	});
 });

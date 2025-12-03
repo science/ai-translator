@@ -3,10 +3,34 @@ import {
 	createOpenAIClient,
 	isRetryableError,
 	sleep,
+	sanitizeApiKey,
 	type OpenAIError
 } from '$lib/services/openai';
 
 describe('openai service', () => {
+	describe('sanitizeApiKey', () => {
+		it('should strip surrounding double quotes', () => {
+			expect(sanitizeApiKey('"sk-test-key"')).toBe('sk-test-key');
+		});
+
+		it('should strip surrounding single quotes', () => {
+			expect(sanitizeApiKey("'sk-test-key'")).toBe('sk-test-key');
+		});
+
+		it('should trim whitespace and strip quotes', () => {
+			expect(sanitizeApiKey('  "sk-test-key"  ')).toBe('sk-test-key');
+		});
+
+		it('should leave unquoted keys unchanged', () => {
+			expect(sanitizeApiKey('sk-test-key')).toBe('sk-test-key');
+		});
+
+		it('should not strip non-matching quotes', () => {
+			expect(sanitizeApiKey('"sk-test-key')).toBe('"sk-test-key');
+			expect(sanitizeApiKey("sk-test-key'")).toBe("sk-test-key'");
+		});
+	});
+
 	describe('isRetryableError', () => {
 		it('should return true for 429 rate limit errors', () => {
 			const error: OpenAIError = new Error('Rate limit exceeded');
@@ -110,6 +134,35 @@ describe('openai service', () => {
 			const client = createOpenAIClient({ apiKey: 'test-key' });
 			expect(client).toBeDefined();
 			expect(client.createChatCompletion).toBeInstanceOf(Function);
+		});
+
+		it('should strip surrounding quotes from API key', async () => {
+			const mockResponse = {
+				id: 'chatcmpl-123',
+				choices: [{ index: 0, message: { role: 'assistant', content: 'OK' } }]
+			};
+
+			globalThis.fetch = vi.fn().mockResolvedValue({
+				ok: true,
+				json: () => Promise.resolve(mockResponse)
+			});
+
+			// User pasted API key with surrounding quotes (common copy-paste error)
+			const client = createOpenAIClient({ apiKey: '"sk-test-key-12345"' });
+			await client.createChatCompletion({
+				model: 'gpt-4o',
+				messages: [{ role: 'user', content: 'Hi' }]
+			});
+
+			// Should have stripped the quotes when making the request
+			expect(globalThis.fetch).toHaveBeenCalledWith(
+				'https://api.openai.com/v1/chat/completions',
+				expect.objectContaining({
+					headers: expect.objectContaining({
+						Authorization: 'Bearer sk-test-key-12345' // No quotes!
+					})
+				})
+			);
 		});
 
 		describe('createChatCompletion', () => {
