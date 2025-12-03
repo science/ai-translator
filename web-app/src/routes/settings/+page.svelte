@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
+	import { getDocumentsStorageUsed, clearAllDocuments as clearIndexedDBDocuments } from '$lib/storage';
 
 	// API Key state
 	let apiKey = $state('');
@@ -13,8 +14,25 @@
 	let defaultChunkSize = $state('4000');
 	let defaultReasoningEffort = $state('medium');
 
+	// Storage state
+	let storageUsed = $state<number | null>(null);
+	let showDeleteConfirmation = $state(false);
+
 	// Check if the selected model is a 5-series model (supports reasoning effort)
 	let is5SeriesModel = $derived(defaultModel.startsWith('gpt-5'));
+
+	// Format bytes to human-readable string
+	function formatBytes(bytes: number): string {
+		if (bytes === 0) return '0 B';
+		const k = 1024;
+		const sizes = ['B', 'KB', 'MB', 'GB'];
+		const i = Math.floor(Math.log(bytes) / Math.log(k));
+		return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+	}
+
+	async function loadStorageEstimate() {
+		storageUsed = await getDocumentsStorageUsed();
+	}
 
 	onMount(() => {
 		// Load API key from localStorage
@@ -33,6 +51,9 @@
 
 		const storedReasoningEffort = localStorage.getItem('default_reasoning_effort');
 		if (storedReasoningEffort) defaultReasoningEffort = storedReasoningEffort;
+
+		// Load storage estimate
+		loadStorageEstimate();
 	});
 
 	function saveApiKey() {
@@ -58,10 +79,11 @@
 		}
 	}
 
-	function clearAllDocuments() {
-		if (browser && confirm('Are you sure you want to delete all documents? This cannot be undone.')) {
-			localStorage.removeItem('documents');
-		}
+	async function handleDeleteAllDocuments() {
+		await clearIndexedDBDocuments();
+		showDeleteConfirmation = false;
+		// Refresh storage estimate
+		await loadStorageEstimate();
 	}
 </script>
 
@@ -201,23 +223,54 @@
 		<div class="bg-white rounded-lg border border-gray-200 p-6">
 			<h2 class="text-lg font-semibold text-gray-900 mb-4">Storage Management</h2>
 
-			<p class="text-sm text-gray-600 mb-4">Total storage used: 0 KB</p>
+			<p class="text-sm text-gray-600 mb-4">
+				Total storage used: {storageUsed !== null ? formatBytes(storageUsed) : 'Calculating...'}
+			</p>
 
 			<div class="flex flex-wrap gap-2">
 				<button
 					type="button"
-					onclick={clearAllDocuments}
+					data-testid="delete-all-documents"
+					onclick={() => showDeleteConfirmation = true}
 					class="px-4 py-2 text-sm text-red-600 border border-red-300 rounded-lg hover:bg-red-50 transition-colors"
 				>
-					Clear All Documents
-				</button>
-				<button type="button" class="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-					Export Data
-				</button>
-				<button type="button" class="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-					Import Data
+					Delete All Documents
 				</button>
 			</div>
 		</div>
 	</div>
 </div>
+
+<!-- Delete Confirmation Modal -->
+{#if showDeleteConfirmation}
+	<div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+		<div class="bg-white rounded-lg p-6 max-w-md mx-4 shadow-xl">
+			<h3 class="text-lg font-semibold text-gray-900 mb-3">Delete All Documents?</h3>
+			<p class="text-sm text-gray-600 mb-4">
+				This will permanently delete all uploaded documents, converted files, and translations from your browser storage.
+				Your API key and settings will be preserved.
+			</p>
+			<p class="text-sm text-red-600 font-medium mb-4">
+				This action cannot be undone.
+			</p>
+			<div class="flex justify-end gap-3">
+				<button
+					type="button"
+					data-testid="cancel-delete"
+					onclick={() => showDeleteConfirmation = false}
+					class="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+				>
+					Cancel
+				</button>
+				<button
+					type="button"
+					data-testid="confirm-delete"
+					onclick={handleDeleteAllDocuments}
+					class="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+				>
+					Delete All
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}

@@ -71,6 +71,12 @@ export async function getStorageEstimate(): Promise<{ usage: number; quota: numb
 	return null;
 }
 
+// Calculate actual storage used by our documents (not total browser storage)
+export async function getDocumentsStorageUsed(): Promise<number> {
+	const documents = await getAllDocuments();
+	return documents.reduce((total, doc) => total + doc.size, 0);
+}
+
 export async function requestPersistentStorage(): Promise<boolean> {
 	if (navigator.storage?.persist) {
 		return navigator.storage.persist();

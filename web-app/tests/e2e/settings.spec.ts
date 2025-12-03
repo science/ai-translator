@@ -166,3 +166,81 @@ test.describe('Settings Page - Default Settings', () => {
 		await expect(reasoningLabel).toBeVisible();
 	});
 });
+
+test.describe('Settings Page - Storage Management', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto('/settings');
+		await page.evaluate(() => localStorage.clear());
+		await page.reload();
+	});
+
+	test('displays storage usage', async ({ page }) => {
+		await page.goto('/settings');
+
+		// Should show storage info (either a value or "Calculating...")
+		const storageText = page.getByText(/Total storage used:/);
+		await expect(storageText).toBeVisible();
+	});
+
+	test('shows delete confirmation dialog when Delete All Documents is clicked', async ({ page }) => {
+		await page.goto('/settings');
+
+		// Click the delete button
+		await page.locator('[data-testid="delete-all-documents"]').click();
+
+		// Confirmation dialog should appear
+		await expect(page.getByText('Delete All Documents?')).toBeVisible();
+		await expect(page.getByText(/This will permanently delete/)).toBeVisible();
+		await expect(page.getByText('This action cannot be undone.')).toBeVisible();
+	});
+
+	test('cancel button closes the confirmation dialog', async ({ page }) => {
+		await page.goto('/settings');
+
+		// Open the dialog
+		await page.locator('[data-testid="delete-all-documents"]').click();
+		await expect(page.getByText('Delete All Documents?')).toBeVisible();
+
+		// Click cancel
+		await page.locator('[data-testid="cancel-delete"]').click();
+
+		// Dialog should close
+		await expect(page.getByText('Delete All Documents?')).not.toBeVisible();
+	});
+
+	test('confirm button closes dialog and clears documents', async ({ page }) => {
+		await page.goto('/settings');
+
+		// Open the dialog
+		await page.locator('[data-testid="delete-all-documents"]').click();
+		await expect(page.getByText('Delete All Documents?')).toBeVisible();
+
+		// Click confirm
+		await page.locator('[data-testid="confirm-delete"]').click();
+
+		// Dialog should close
+		await expect(page.getByText('Delete All Documents?')).not.toBeVisible();
+	});
+
+	test('API key is preserved when documents are deleted', async ({ page }) => {
+		await page.goto('/settings');
+
+		// First save an API key
+		const apiKeyInput = page.locator('#api-key');
+		await apiKeyInput.fill('sk-test-key-preserve');
+		await page.locator('[data-testid="save-api-key"]').click();
+
+		// Wait for save
+		await page.waitForTimeout(100);
+
+		// Delete all documents
+		await page.locator('[data-testid="delete-all-documents"]').click();
+		await page.locator('[data-testid="confirm-delete"]').click();
+
+		// Reload the page
+		await page.reload();
+
+		// API key should still be there
+		await expect(apiKeyInput).toHaveValue('sk-test-key-preserve');
+	});
+});
