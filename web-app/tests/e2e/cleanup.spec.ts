@@ -384,4 +384,28 @@ test.describe('Document Cleanup (Rectification)', () => {
 		await expect(button).toBeEnabled({ timeout: 10000 });
 		await expect(button).toHaveText('Start Cleanup');
 	});
+
+	test('model dropdown contains correct options: gpt-5.1, gpt-5-mini, gpt-4.1, gpt-4.1-mini', async ({
+		page
+	}) => {
+		await page.goto('/cleanup');
+
+		// Find the model select dropdown (second select, after document select)
+		const modelSelect = page.locator('select').nth(1);
+		await expect(modelSelect).toBeVisible();
+
+		// Get all options
+		const options = await modelSelect.locator('option').allTextContents();
+
+		// Should contain exactly these models
+		expect(options).toEqual(['gpt-5.1', 'gpt-5-mini', 'gpt-4.1', 'gpt-4.1-mini']);
+	});
+
+	test('cleanup page does not have reasoning effort selector', async ({ page }) => {
+		await page.goto('/cleanup');
+
+		// Cleanup doesn't use reasoning effort at all
+		const reasoningLabel = page.getByText('Reasoning Effort');
+		await expect(reasoningLabel).not.toBeVisible();
+	});
 });

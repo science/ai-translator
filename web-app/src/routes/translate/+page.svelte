@@ -59,6 +59,9 @@
 	// Filter to only show markdown documents
 	let markdownDocuments = $derived(documents.filter((doc) => doc.type === 'markdown'));
 
+	// Check if the selected model is a 5-series model (supports reasoning effort)
+	let is5SeriesModel = $derived(model.startsWith('gpt-5'));
+
 	// Get the selected document info (not full document with content)
 	let selectedDocInfo = $derived(documents.find((doc) => doc.id === selectedDocId));
 
@@ -97,7 +100,7 @@
 					filename: selectedDoc.name,
 					model,
 					chunkSize,
-					reasoningEffort,
+					...(is5SeriesModel ? { reasoningEffort } : {}),
 					stream: true
 				})
 			});
@@ -246,13 +249,15 @@
 			<div>
 				<label class="block text-sm font-medium text-gray-700 mb-2">Model:</label>
 				<select
+					data-testid="model-select"
 					bind:value={model}
 					disabled={isTranslating}
 					class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
 				>
+					<option value="gpt-5.1">gpt-5.1</option>
 					<option value="gpt-5-mini">gpt-5-mini</option>
-					<option value="gpt-4o">gpt-4o</option>
-					<option value="gpt-5">gpt-5</option>
+					<option value="gpt-4.1">gpt-4.1</option>
+					<option value="gpt-4.1-mini">gpt-4.1-mini</option>
 				</select>
 			</div>
 			<div>
@@ -266,18 +271,20 @@
 			</div>
 		</div>
 
-		<div>
-			<label class="block text-sm font-medium text-gray-700 mb-2">Reasoning Effort (GPT-5):</label>
-			<select
-				bind:value={reasoningEffort}
-				disabled={isTranslating}
-				class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
-			>
-				<option value="low">Low</option>
-				<option value="medium">Medium</option>
-				<option value="high">High</option>
-			</select>
-		</div>
+		{#if is5SeriesModel}
+			<div>
+				<label class="block text-sm font-medium text-gray-700 mb-2">Reasoning Effort:</label>
+				<select
+					bind:value={reasoningEffort}
+					disabled={isTranslating}
+					class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
+				>
+					<option value="low">Low</option>
+					<option value="medium">Medium</option>
+					<option value="high">High</option>
+				</select>
+			</div>
+		{/if}
 
 		<button
 			onclick={handleTranslate}

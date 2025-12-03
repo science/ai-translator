@@ -98,12 +98,12 @@ test.describe('Settings Page - Default Settings', () => {
 		await page.goto('/settings');
 
 		const modelSelect = page.locator('#default-model');
-		await modelSelect.selectOption('gpt-4o');
+		await modelSelect.selectOption('gpt-4.1');
 		await page.locator('[data-testid="save-defaults"]').click();
 
 		// Reload and verify it persists
 		await page.reload();
-		await expect(page.locator('#default-model')).toHaveValue('gpt-4o');
+		await expect(page.locator('#default-model')).toHaveValue('gpt-4.1');
 	});
 
 	test('allows changing default chunk size', async ({ page }) => {
@@ -128,5 +128,41 @@ test.describe('Settings Page - Default Settings', () => {
 		// Reload and verify it persists
 		await page.reload();
 		await expect(page.locator('#default-reasoning-effort')).toHaveValue('high');
+	});
+
+	test('model dropdown contains correct options: gpt-5.1, gpt-5-mini, gpt-4.1, gpt-4.1-mini', async ({
+		page
+	}) => {
+		await page.goto('/settings');
+
+		const modelSelect = page.locator('#default-model');
+		await expect(modelSelect).toBeVisible();
+
+		// Get all options
+		const options = await modelSelect.locator('option').allTextContents();
+
+		// Should contain exactly these models
+		expect(options).toEqual(['gpt-5.1', 'gpt-5-mini', 'gpt-4.1', 'gpt-4.1-mini']);
+	});
+
+	test('reasoning effort is only visible when 5-series model is selected', async ({ page }) => {
+		await page.goto('/settings');
+
+		// Default model is gpt-5-mini, so reasoning effort should be visible
+		const reasoningLabel = page.getByText('Default Reasoning Effort');
+		await expect(reasoningLabel).toBeVisible();
+
+		// Select a 4-series model
+		const modelSelect = page.locator('#default-model');
+		await modelSelect.selectOption('gpt-4.1');
+
+		// Reasoning effort should now be hidden
+		await expect(reasoningLabel).not.toBeVisible();
+
+		// Select a 5-series model again
+		await modelSelect.selectOption('gpt-5.1');
+
+		// Reasoning effort should be visible again
+		await expect(reasoningLabel).toBeVisible();
 	});
 });

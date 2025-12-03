@@ -13,6 +13,9 @@
 	let defaultChunkSize = $state('4000');
 	let defaultReasoningEffort = $state('medium');
 
+	// Check if the selected model is a 5-series model (supports reasoning effort)
+	let is5SeriesModel = $derived(defaultModel.startsWith('gpt-5'));
+
 	onMount(() => {
 		// Load API key from localStorage
 		const storedApiKey = localStorage.getItem('openai_api_key');
@@ -151,9 +154,10 @@
 						bind:value={defaultModel}
 						class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
 					>
+						<option value="gpt-5.1">gpt-5.1</option>
 						<option value="gpt-5-mini">gpt-5-mini</option>
-						<option value="gpt-4o">gpt-4o</option>
-						<option value="gpt-5">gpt-5</option>
+						<option value="gpt-4.1">gpt-4.1</option>
+						<option value="gpt-4.1-mini">gpt-4.1-mini</option>
 					</select>
 				</div>
 
@@ -167,18 +171,20 @@
 					/>
 				</div>
 
-				<div>
-					<label for="default-reasoning-effort" class="block text-sm font-medium text-gray-700 mb-2">Default Reasoning Effort:</label>
-					<select
-						id="default-reasoning-effort"
-						bind:value={defaultReasoningEffort}
-						class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-					>
-						<option value="low">Low</option>
-						<option value="medium">Medium</option>
-						<option value="high">High</option>
-					</select>
-				</div>
+				{#if is5SeriesModel}
+					<div>
+						<label for="default-reasoning-effort" class="block text-sm font-medium text-gray-700 mb-2">Default Reasoning Effort:</label>
+						<select
+							id="default-reasoning-effort"
+							bind:value={defaultReasoningEffort}
+							class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+						>
+							<option value="low">Low</option>
+							<option value="medium">Medium</option>
+							<option value="high">High</option>
+						</select>
+					</div>
+				{/if}
 
 				<button
 					type="button"

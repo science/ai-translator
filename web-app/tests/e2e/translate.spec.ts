@@ -448,6 +448,202 @@ test.describe('Document Translation', () => {
 	});
 });
 
+test.describe('Model Selection', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto('/');
+		await clearAllStorage(page);
+	});
+
+	test('model dropdown contains correct options: gpt-5.1, gpt-5-mini, gpt-4.1, gpt-4.1-mini', async ({
+		page
+	}) => {
+		await page.goto('/translate');
+
+		const modelSelect = page.getByTestId('model-select');
+		await expect(modelSelect).toBeVisible();
+
+		// Get all options
+		const options = await modelSelect.locator('option').allTextContents();
+
+		// Should contain exactly these models
+		expect(options).toEqual(['gpt-5.1', 'gpt-5-mini', 'gpt-4.1', 'gpt-4.1-mini']);
+	});
+
+	test('default model is gpt-5-mini', async ({ page }) => {
+		await page.goto('/translate');
+
+		const modelSelect = page.getByTestId('model-select');
+		await expect(modelSelect).toHaveValue('gpt-5-mini');
+	});
+
+	test('reasoning effort is visible when gpt-5-mini is selected', async ({ page }) => {
+		await page.goto('/translate');
+
+		// Default is gpt-5-mini
+		const reasoningLabel = page.getByText('Reasoning Effort');
+		await expect(reasoningLabel).toBeVisible();
+	});
+
+	test('reasoning effort is visible when gpt-5.1 is selected', async ({ page }) => {
+		await page.goto('/translate');
+
+		const modelSelect = page.getByTestId('model-select');
+		await modelSelect.selectOption('gpt-5.1');
+
+		const reasoningLabel = page.getByText('Reasoning Effort');
+		await expect(reasoningLabel).toBeVisible();
+	});
+
+	test('reasoning effort is hidden when gpt-4.1 is selected', async ({ page }) => {
+		await page.goto('/translate');
+
+		// Wait for page to be fully loaded
+		await page.waitForLoadState('networkidle');
+
+		// Verify initial state - gpt-5-mini is default so reasoning should be visible
+		const reasoningLabel = page.getByText('Reasoning Effort');
+		await expect(reasoningLabel).toBeVisible();
+
+		// Select non-5 series model
+		const modelSelect = page.getByTestId('model-select');
+		await expect(modelSelect).toHaveValue('gpt-5-mini'); // Verify initial value
+
+		// Click and select to ensure proper interaction
+		await modelSelect.click();
+		await modelSelect.selectOption('gpt-4.1');
+
+		// Wait for selection to complete
+		await expect(modelSelect).toHaveValue('gpt-4.1');
+
+		// Reasoning effort should now be hidden
+		await expect(reasoningLabel).not.toBeVisible();
+	});
+
+	test('reasoning effort is hidden when gpt-4.1-mini is selected', async ({ page }) => {
+		await page.goto('/translate');
+
+		// Wait for page to be fully loaded
+		await page.waitForLoadState('networkidle');
+
+		// Verify initial state
+		const reasoningLabel = page.getByText('Reasoning Effort');
+		await expect(reasoningLabel).toBeVisible();
+
+		const modelSelect = page.getByTestId('model-select');
+		await expect(modelSelect).toHaveValue('gpt-5-mini'); // Verify initial value
+
+		// Click and select to ensure proper interaction
+		await modelSelect.click();
+		await modelSelect.selectOption('gpt-4.1-mini');
+
+		// Wait for selection to complete
+		await expect(modelSelect).toHaveValue('gpt-4.1-mini');
+
+		// Reasoning effort should now be hidden
+		await expect(reasoningLabel).not.toBeVisible();
+	});
+
+	test('API call includes reasoningEffort when 5-series model is selected', async ({ page }) => {
+		const markdownContent = '# Test Book\n\nContent to translate.';
+
+		// Pre-populate IndexedDB with a markdown document
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_123',
+			name: 'test-book.md',
+			type: 'markdown',
+			content: markdownContent,
+			size: markdownContent.length,
+			uploadedAt: new Date().toISOString(),
+			phase: 'uploaded'
+		});
+
+		// Capture the API request
+		let capturedRequest: any = null;
+		await page.route('/api/translate', async (route) => {
+			const request = route.request();
+			capturedRequest = JSON.parse((await request.postData()) || '{}');
+			await route.fulfill({
+				status: 200,
+				contentType: 'text/event-stream',
+				body: 'data: {"type":"complete","japaneseOnly":"# テストブック","bilingual":"# Test Book\\n\\n---\\n\\n# テストブック"}\n\n'
+			});
+		});
+
+		await page.goto('/translate');
+		await page.waitForLoadState('networkidle');
+
+		// Select gpt-5.1 model
+		const modelSelect = page.getByTestId('model-select');
+		await modelSelect.click();
+		await modelSelect.selectOption('gpt-5.1');
+		await expect(modelSelect).toHaveValue('gpt-5.1');
+
+		// Select the document
+		await page.locator('select').first().selectOption('doc_md_123');
+
+		// Click translate and wait for API call simultaneously
+		await Promise.all([
+			page.waitForResponse('/api/translate'),
+			page.locator('button', { hasText: 'Start Translation' }).click()
+		]);
+
+		// Should include reasoningEffort
+		expect(capturedRequest?.model).toBe('gpt-5.1');
+		expect(capturedRequest?.reasoningEffort).toBe('medium');
+	});
+
+	test('API call does NOT include reasoningEffort when 4-series model is selected', async ({
+		page
+	}) => {
+		const markdownContent = '# Test Book\n\nContent to translate.';
+
+		// Pre-populate IndexedDB with a markdown document
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_123',
+			name: 'test-book.md',
+			type: 'markdown',
+			content: markdownContent,
+			size: markdownContent.length,
+			uploadedAt: new Date().toISOString(),
+			phase: 'uploaded'
+		});
+
+		// Capture the API request
+		let capturedRequest: any = null;
+		await page.route('/api/translate', async (route) => {
+			const request = route.request();
+			capturedRequest = JSON.parse((await request.postData()) || '{}');
+			await route.fulfill({
+				status: 200,
+				contentType: 'text/event-stream',
+				body: 'data: {"type":"complete","japaneseOnly":"# テストブック","bilingual":"# Test Book\\n\\n---\\n\\n# テストブック"}\n\n'
+			});
+		});
+
+		await page.goto('/translate');
+		await page.waitForLoadState('networkidle');
+
+		// Select gpt-4.1 model (non-5 series)
+		const modelSelect = page.getByTestId('model-select');
+		await modelSelect.click();
+		await modelSelect.selectOption('gpt-4.1');
+		await expect(modelSelect).toHaveValue('gpt-4.1');
+
+		// Select the document
+		await page.locator('select').first().selectOption('doc_md_123');
+
+		// Click translate and wait for API call simultaneously
+		await Promise.all([
+			page.waitForResponse('/api/translate'),
+			page.locator('button', { hasText: 'Start Translation' }).click()
+		]);
+
+		// Should NOT include reasoningEffort
+		expect(capturedRequest?.model).toBe('gpt-4.1');
+		expect(capturedRequest?.reasoningEffort).toBeUndefined();
+	});
+});
+
 test.describe('My Documents - Translation Variants', () => {
 	test.beforeEach(async ({ page }) => {
 		await page.goto('/');

@@ -208,9 +208,10 @@
 					disabled={isCleaning}
 					class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
 				>
+					<option value="gpt-5.1">gpt-5.1</option>
 					<option value="gpt-5-mini">gpt-5-mini</option>
-					<option value="gpt-4o">gpt-4o</option>
-					<option value="gpt-5">gpt-5</option>
+					<option value="gpt-4.1">gpt-4.1</option>
+					<option value="gpt-4.1-mini">gpt-4.1-mini</option>
 				</select>
 			</div>
 			<div>
