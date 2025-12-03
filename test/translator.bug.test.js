@@ -10,12 +10,12 @@ describe('Translator Bug: English text in Japanese output', () => {
   });
 
   test('should return ONLY Japanese translation, not source + translation', async () => {
-    const mockResponse = `# 著者より
+    const translationContent = `# 著者より
 
 **私**たち一人ひとりが持ち、分かち合う人生の体験は...`;
 
     mockCreate.mockResolvedValue({
-      choices: [{ message: { content: mockResponse } }]
+      choices: [{ message: { content: JSON.stringify({ translation: translationContent }) } }]
     });
 
     const translator = createTranslator();
@@ -31,10 +31,10 @@ describe('Translator Bug: English text in Japanese output', () => {
   });
 
   test('should not contain [Source] or [Translation] markers', async () => {
-    const mockResponse = `翌朝、私は飛行機に乗らなきゃいけない...`;
+    const translationContent = `翌朝、私は飛行機に乗らなきゃいけない...`;
 
     mockCreate.mockResolvedValue({
-      choices: [{ message: { content: mockResponse } }]
+      choices: [{ message: { content: JSON.stringify({ translation: translationContent }) } }]
     });
 
     const translator = createTranslator();
@@ -48,12 +48,12 @@ describe('Translator Bug: English text in Japanese output', () => {
   });
 
   test('should not start with meta-instructions in Japanese', async () => {
-    const mockResponse = `# 著者より
+    const translationContent = `# 著者より
 
 **私**たち一人ひとりが持ち、分かち合う人生の体験は...`;
 
     mockCreate.mockResolvedValue({
-      choices: [{ message: { content: mockResponse } }]
+      choices: [{ message: { content: JSON.stringify({ translation: translationContent }) } }]
     });
 
     const translator = createTranslator();

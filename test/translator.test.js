@@ -85,7 +85,7 @@ describe('translator', () => {
       mockCreate.mockResolvedValue({
         choices: [{
           message: {
-            content: expectedTranslation
+            content: JSON.stringify({ translation: expectedTranslation })
           }
         }]
       });
@@ -98,13 +98,14 @@ describe('translator', () => {
         messages: [
           {
             role: 'system',
-            content: expect.stringContaining('You are a professional translator. Translate the following English text to Japanese while preserving markdown formatting.')
+            content: expect.stringContaining('You are a professional translator')
           },
           {
             role: 'user',
-            content: inputText
+            content: expect.any(String)
           }
-        ]
+        ],
+        response_format: expect.any(Object)
       });
     });
 
@@ -115,7 +116,7 @@ describe('translator', () => {
       mockCreate.mockResolvedValue({
         choices: [{
           message: {
-            content: expectedOutput
+            content: JSON.stringify({ translation: expectedOutput })
           }
         }]
       });
@@ -132,7 +133,7 @@ describe('translator', () => {
       mockCreate.mockResolvedValue({
         choices: [{
           message: {
-            content: expectedTranslation
+            content: JSON.stringify({ translation: expectedTranslation })
           }
         }]
       });
@@ -145,13 +146,14 @@ describe('translator', () => {
         messages: [
           {
             role: 'system',
-            content: expect.stringContaining('You are a professional translator. Translate the following English text to Spanish while preserving markdown formatting.')
+            content: expect.stringContaining('Spanish')
           },
           {
             role: 'user',
-            content: inputText
+            content: expect.any(String)
           }
-        ]
+        ],
+        response_format: expect.any(Object)
       });
     });
 
@@ -180,7 +182,7 @@ describe('translator', () => {
       mockCreate.mockResolvedValue({
         choices: [{
           message: {
-            content: 'テスト'
+            content: JSON.stringify({ translation: 'テスト' })
           }
         }]
       });
@@ -201,7 +203,7 @@ describe('translator', () => {
       mockCreate.mockResolvedValue({
         choices: [{
           message: {
-            content: 'テスト'
+            content: JSON.stringify({ translation: 'テスト' })
           }
         }]
       });
@@ -222,7 +224,7 @@ describe('translator', () => {
       mockCreate.mockResolvedValue({
         choices: [{
           message: {
-            content: 'テスト'
+            content: JSON.stringify({ translation: 'テスト' })
           }
         }]
       });
@@ -242,7 +244,7 @@ describe('translator', () => {
       mockCreate.mockResolvedValue({
         choices: [{
           message: {
-            content: 'テスト'
+            content: JSON.stringify({ translation: 'テスト' })
           }
         }]
       });
@@ -265,7 +267,7 @@ describe('translator', () => {
       mockCreate.mockResolvedValue({
         choices: [{
           message: {
-            content: 'テスト'
+            content: JSON.stringify({ translation: 'テスト' })
           }
         }]
       });
@@ -288,7 +290,7 @@ describe('translator', () => {
       mockCreate.mockResolvedValue({
         choices: [{
           message: {
-            content: 'テスト'
+            content: JSON.stringify({ translation: 'テスト' })
           }
         }]
       });
@@ -332,7 +334,7 @@ describe('translator', () => {
         .mockRejectedValueOnce(rateLimitError)
         .mockResolvedValueOnce({
           choices: [{
-            message: { content: '成功' }
+            message: { content: JSON.stringify({ translation: '成功' }) }
           }]
         });
 
@@ -350,7 +352,7 @@ describe('translator', () => {
         .mockRejectedValueOnce(networkError)
         .mockResolvedValueOnce({
           choices: [{
-            message: { content: 'ネットワーク回復' }
+            message: { content: JSON.stringify({ translation: 'ネットワーク回復' }) }
           }]
         });
 
@@ -371,7 +373,7 @@ describe('translator', () => {
         .mockRejectedValueOnce(error)
         .mockResolvedValueOnce({
           choices: [{
-            message: { content: '成功' }
+            message: { content: JSON.stringify({ translation: '成功' }) }
           }]
         });
 
@@ -409,7 +411,7 @@ describe('translator', () => {
         .mockRejectedValueOnce(error)
         .mockResolvedValueOnce({
           choices: [{
-            message: { content: '回復' }
+            message: { content: JSON.stringify({ translation: '回復' }) }
           }]
         });
 
@@ -451,7 +453,7 @@ describe('translator', () => {
         .mockRejectedValueOnce(timeoutError)
         .mockResolvedValueOnce({
           choices: [{
-            message: { content: 'タイムアウト回復' }
+            message: { content: JSON.stringify({ translation: 'タイムアウト回復' }) }
           }]
         });
 
@@ -469,7 +471,7 @@ describe('translator', () => {
         .mockRejectedValueOnce(error)
         .mockResolvedValueOnce({
           choices: [{
-            message: { content: '成功' }
+            message: { content: JSON.stringify({ translation: '成功' }) }
           }]
         });
 
@@ -483,6 +485,172 @@ describe('translator', () => {
           chunkLength: 200
         })
       );
+    });
+  });
+
+  describe('context-aware translation', () => {
+    let translator;
+    let mockCreate;
+
+    beforeEach(() => {
+      process.env.OPENAI_API_KEY = 'test-api-key';
+      mockCreate = jest.fn();
+
+      translator = createTranslator();
+      translator.client.chat.completions.create = mockCreate;
+    });
+
+    test('should accept context parameter', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: { content: '{"translation": "テスト翻訳"}' }
+        }]
+      });
+
+      const context = {
+        previousEnglish: 'Previous paragraph content.',
+        nextEnglish: 'Next paragraph content.',
+        previousTranslation: '前の段落の内容。',
+        isFirstChunk: false,
+        isLastChunk: false
+      };
+
+      const result = await translator.translateChunk('Test content', context);
+
+      expect(result).toBe('テスト翻訳');
+    });
+
+    test('should work without context parameter (still uses JSON format)', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: { content: '{"translation": "テスト"}' }
+        }]
+      });
+
+      // Call without context - should still use JSON format by default
+      const result = await translator.translateChunk('Test');
+
+      expect(result).toBe('テスト');
+      // Verify JSON format is used
+      const callArgs = mockCreate.mock.calls[0][0];
+      expect(callArgs.response_format).toBeDefined();
+    });
+
+    test('should include context in user message as JSON when context provided', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: { content: '{"translation": "翻訳結果"}' }
+        }]
+      });
+
+      const context = {
+        previousEnglish: 'Previous text',
+        nextEnglish: 'Next text',
+        previousTranslation: '前のテキスト'
+      };
+
+      await translator.translateChunk('Current chunk', context);
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      const userMessage = callArgs.messages.find(m => m.role === 'user');
+      const parsedContent = JSON.parse(userMessage.content);
+
+      expect(parsedContent).toHaveProperty('context');
+      expect(parsedContent.context.previous_english).toBe('Previous text');
+      expect(parsedContent.context.next_english).toBe('Next text');
+      expect(parsedContent.context.previous_japanese_translation).toBe('前のテキスト');
+      expect(parsedContent).toHaveProperty('chunk_to_translate', 'Current chunk');
+    });
+
+    test('should include response_format with JSON schema for structured outputs', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: { content: '{"translation": "テスト"}' }
+        }]
+      });
+
+      await translator.translateChunk('Test', {});
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      expect(callArgs.response_format).toEqual({
+        type: 'json_schema',
+        json_schema: {
+          name: 'translation_response',
+          strict: true,
+          schema: {
+            type: 'object',
+            properties: {
+              translation: { type: 'string' }
+            },
+            required: ['translation'],
+            additionalProperties: false
+          }
+        }
+      });
+    });
+
+    test('should include context-aware instructions in system prompt', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: { content: '{"translation": "テスト"}' }
+        }]
+      });
+
+      await translator.translateChunk('Test', { previousEnglish: 'Previous' });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      const systemMessage = callArgs.messages.find(m => m.role === 'system');
+
+      expect(systemMessage.content).toContain('ONLY translate the text in the "chunk_to_translate" field');
+      expect(systemMessage.content).toContain('context');
+      expect(systemMessage.content).toContain('previous_japanese_translation');
+    });
+
+    test('should handle null context fields gracefully', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: { content: '{"translation": "翻訳"}' }
+        }]
+      });
+
+      const context = {
+        previousEnglish: null,
+        nextEnglish: null,
+        previousTranslation: null,
+        isFirstChunk: true,
+        isLastChunk: false
+      };
+
+      await translator.translateChunk('Test chunk', context);
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      const userMessage = callArgs.messages.find(m => m.role === 'user');
+      const parsedContent = JSON.parse(userMessage.content);
+
+      expect(parsedContent.context.previous_english).toBeNull();
+      expect(parsedContent.context.next_english).toBeNull();
+      expect(parsedContent.context.previous_japanese_translation).toBeNull();
+    });
+
+    test('should disable context-aware mode when contextAware option is false', async () => {
+      const noContextTranslator = createTranslator({ contextAware: false });
+      noContextTranslator.client.chat.completions.create = mockCreate;
+
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: { content: 'テスト翻訳' }
+        }]
+      });
+
+      await noContextTranslator.translateChunk('Test', { previousEnglish: 'Previous' });
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      const userMessage = callArgs.messages.find(m => m.role === 'user');
+
+      // Should send raw text, not JSON
+      expect(userMessage.content).toBe('Test');
+      // Should not have response_format
+      expect(callArgs.response_format).toBeUndefined();
     });
   });
 });

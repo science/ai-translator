@@ -16,8 +16,9 @@ describe('Translation Engine', () => {
       const result = await translateDocument(chunks, mockTranslateChunk);
 
       expect(mockTranslateChunk).toHaveBeenCalledTimes(2);
-      expect(mockTranslateChunk).toHaveBeenNthCalledWith(1, '# Test Header\n\nParagraph 1');
-      expect(mockTranslateChunk).toHaveBeenNthCalledWith(2, '## Section 2\n\nParagraph 2');
+      // Now passes (content, context) - verify content is correct
+      expect(mockTranslateChunk).toHaveBeenNthCalledWith(1, '# Test Header\n\nParagraph 1', expect.any(Object));
+      expect(mockTranslateChunk).toHaveBeenNthCalledWith(2, '## Section 2\n\nParagraph 2', expect.any(Object));
 
       expect(result.translatedChunks).toHaveLength(2);
       expect(result.translatedChunks[0].originalContent).toBe('# Test Header\n\nParagraph 1');
@@ -137,6 +138,87 @@ describe('Translation Engine', () => {
         'start-Content 2',
         'end-Content 2'
       ]);
+    });
+  });
+
+  describe('context-aware translation', () => {
+    it('should pass context with previous/next English content to translateChunkFn', async () => {
+      const chunks = [
+        { index: 0, type: 'header-section', content: 'First chunk content' },
+        { index: 1, type: 'header-section', content: 'Second chunk content' },
+        { index: 2, type: 'header-section', content: 'Third chunk content' }
+      ];
+
+      const capturedContexts = [];
+      const mockTranslateChunk = jest.fn((content, context) => {
+        capturedContexts.push({ content, context });
+        return Promise.resolve(`Translated: ${content}`);
+      });
+
+      await translateDocument(chunks, mockTranslateChunk);
+
+      // First chunk: no previous, has next
+      expect(capturedContexts[0].context.previousEnglish).toBeNull();
+      expect(capturedContexts[0].context.nextEnglish).toBe('Second chunk content');
+      expect(capturedContexts[0].context.isFirstChunk).toBe(true);
+      expect(capturedContexts[0].context.isLastChunk).toBe(false);
+
+      // Second chunk: has previous and next
+      expect(capturedContexts[1].context.previousEnglish).toBe('First chunk content');
+      expect(capturedContexts[1].context.nextEnglish).toBe('Third chunk content');
+      expect(capturedContexts[1].context.isFirstChunk).toBe(false);
+      expect(capturedContexts[1].context.isLastChunk).toBe(false);
+
+      // Third chunk: has previous, no next
+      expect(capturedContexts[2].context.previousEnglish).toBe('Second chunk content');
+      expect(capturedContexts[2].context.nextEnglish).toBeNull();
+      expect(capturedContexts[2].context.isFirstChunk).toBe(false);
+      expect(capturedContexts[2].context.isLastChunk).toBe(true);
+    });
+
+    it('should chain previousTranslation from one chunk to the next', async () => {
+      const chunks = [
+        { index: 0, type: 'header-section', content: 'Chunk 1' },
+        { index: 1, type: 'header-section', content: 'Chunk 2' },
+        { index: 2, type: 'header-section', content: 'Chunk 3' }
+      ];
+
+      const capturedContexts = [];
+      const mockTranslateChunk = jest.fn((content, context) => {
+        capturedContexts.push({ content, context });
+        return Promise.resolve(`翻訳: ${content}`);
+      });
+
+      await translateDocument(chunks, mockTranslateChunk);
+
+      // First chunk: no previous translation
+      expect(capturedContexts[0].context.previousTranslation).toBeNull();
+
+      // Second chunk: gets first chunk's translation
+      expect(capturedContexts[1].context.previousTranslation).toBe('翻訳: Chunk 1');
+
+      // Third chunk: gets second chunk's translation
+      expect(capturedContexts[2].context.previousTranslation).toBe('翻訳: Chunk 2');
+    });
+
+    it('should handle single chunk document correctly', async () => {
+      const chunks = [
+        { index: 0, type: 'header-section', content: 'Only chunk' }
+      ];
+
+      const capturedContexts = [];
+      const mockTranslateChunk = jest.fn((content, context) => {
+        capturedContexts.push({ content, context });
+        return Promise.resolve('翻訳済み');
+      });
+
+      await translateDocument(chunks, mockTranslateChunk);
+
+      expect(capturedContexts[0].context.previousEnglish).toBeNull();
+      expect(capturedContexts[0].context.nextEnglish).toBeNull();
+      expect(capturedContexts[0].context.previousTranslation).toBeNull();
+      expect(capturedContexts[0].context.isFirstChunk).toBe(true);
+      expect(capturedContexts[0].context.isLastChunk).toBe(true);
     });
   });
 });

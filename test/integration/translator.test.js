@@ -24,7 +24,7 @@ describe('Translator Integration Tests', () => {
       choices: [
         {
           message: {
-            content: 'こんにちは世界'
+            content: JSON.stringify({ translation: 'こんにちは世界' })
           }
         }
       ]
@@ -44,13 +44,14 @@ describe('Translator Integration Tests', () => {
       messages: [
         {
           role: 'system',
-          content: expect.stringContaining('You are a professional translator. Translate the following English text to Japanese while preserving markdown formatting.')
+          content: expect.stringContaining('You are a professional translator')
         },
         {
           role: 'user',
-          content: 'Hello world'
+          content: expect.any(String)
         }
-      ]
+      ],
+      response_format: expect.any(Object)
     });
   });
 
@@ -64,7 +65,7 @@ describe('Translator Integration Tests', () => {
         choices: [
           {
             message: {
-              content: '翻訳されたテキスト'
+              content: JSON.stringify({ translation: '翻訳されたテキスト' })
             }
           }
         ]
@@ -87,7 +88,7 @@ describe('Translator Integration Tests', () => {
       choices: [
         {
           message: {
-            content: '翻訳'
+            content: JSON.stringify({ translation: '翻訳' })
           }
         }
       ]

@@ -33,6 +33,7 @@ export function createTranslator(options = {}) {
   const model = options.model || 'gpt-4o';
   const verbosity = options.verbosity || 'low';
   const reasoningEffort = options.reasoningEffort || 'medium';
+  const contextAware = options.contextAware !== false; // Default to true
 
   function isRetryableError(error) {
     const retryableStatusCodes = [429, 500, 502, 503, 504];
@@ -60,8 +61,46 @@ export function createTranslator(options = {}) {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
 
-  async function translateChunk(chunk, targetLanguage = 'Japanese') {
-    const systemPrompt = `You are a professional translator. Translate the following English text to ${targetLanguage} while preserving markdown formatting.
+  function getContextAwareSystemPrompt(targetLanguage) {
+    return `You are a professional translator. You will receive a JSON object with context and a chunk to translate.
+
+CRITICAL RULES:
+1. ONLY translate the text in the "chunk_to_translate" field
+2. The "context" fields are for REFERENCE ONLY - do NOT translate them
+3. Match the writing style and formality level of "previous_japanese_translation" if provided
+4. Return ONLY valid JSON: {"translation": "your translation here"}
+
+Translation Guidelines:
+- Do not translate word-for-word; make the ${targetLanguage} natural and easy to read.
+- However, do not over-paraphrase. Do not omit, summarize, or condense any meaning.
+- Preserve all original meanings, nuances, logical structure, metaphors, and analogies.
+- Reproduce all emphasis accurately (bold, italics, quotation formatting).
+- You may adjust word order and connectors to make the ${targetLanguage} sound natural, as long as you do not change the meaning.
+- Avoid stiff, literal kanji compounds and choose vocabulary that is easy for readers to understand.
+- Match punctuation and paragraph structure to the original.
+
+CRITICAL: Complete Translation Required:
+- EVERY word and phrase in the "chunk_to_translate" must be translated into idiomatic ${targetLanguage}.
+- Do NOT leave any English words, phrases, or sentences untranslated in the output.
+- The only exceptions are: (1) proper nouns (names of people, places), (2) established English loanwords that are standard in modern ${targetLanguage}.
+- Difficult English expressions, slang, or colloquialisms must be rendered into natural ${targetLanguage} equivalents, not left in English.
+
+INPUT FORMAT:
+{
+  "context": {
+    "previous_english": "English text that came before (for narrative context)",
+    "next_english": "English text that comes after (for anticipating flow)",
+    "previous_japanese_translation": "How the previous chunk was translated (match this style)"
+  },
+  "chunk_to_translate": "THE ONLY TEXT YOU SHOULD TRANSLATE"
+}
+
+OUTPUT FORMAT:
+{"translation": "Your ${targetLanguage} translation of ONLY chunk_to_translate"}`;
+  }
+
+  function getLegacySystemPrompt(targetLanguage) {
+    return `You are a professional translator. Translate the following English text to ${targetLanguage} while preserving markdown formatting.
 
 Translation Guidelines:
 - Do not translate word-for-word; make the Japanese natural and easy to read.
@@ -84,6 +123,61 @@ CRITICAL: Complete Translation Required:
 - The only exceptions are: (1) proper nouns (names of people, places), (2) established English loanwords that are standard in modern Japanese (e.g., コンピューター, インターネット).
 - Difficult English expressions, slang, or colloquialisms must be rendered into natural Japanese equivalents, not left in English.
 - Your output must be 100% Japanese - a Japanese reader should be able to read the entire translation without encountering untranslated English text.`;
+  }
+
+  function buildContextMessage(chunk, context) {
+    return JSON.stringify({
+      context: {
+        previous_english: context.previousEnglish || null,
+        next_english: context.nextEnglish || null,
+        previous_japanese_translation: context.previousTranslation || null
+      },
+      chunk_to_translate: chunk
+    });
+  }
+
+  function parseTranslationResponse(responseText) {
+    const parsed = JSON.parse(responseText);
+    return parsed.translation;
+  }
+
+  const responseFormatSchema = {
+    type: 'json_schema',
+    json_schema: {
+      name: 'translation_response',
+      strict: true,
+      schema: {
+        type: 'object',
+        properties: {
+          translation: { type: 'string' }
+        },
+        required: ['translation'],
+        additionalProperties: false
+      }
+    }
+  };
+
+  async function translateChunk(chunk, contextOrLanguage = {}, targetLanguage = 'Japanese') {
+    // Handle backward compatibility: second argument can be context object or target language string
+    let context = {};
+    let language = targetLanguage;
+
+    if (typeof contextOrLanguage === 'string') {
+      // Legacy call: translateChunk(chunk, 'Spanish')
+      language = contextOrLanguage;
+    } else if (contextOrLanguage && typeof contextOrLanguage === 'object') {
+      context = contextOrLanguage;
+    }
+
+    // Use context-aware mode unless explicitly disabled
+    const useContextAware = contextAware;
+    const systemPrompt = useContextAware
+      ? getContextAwareSystemPrompt(language)
+      : getLegacySystemPrompt(language);
+    const userContent = useContextAware
+      ? buildContextMessage(chunk, context)
+      : chunk;
+
     const maxAttempts = (options.maxRetries !== undefined ? options.maxRetries : 2) + 1;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -97,10 +191,14 @@ CRITICAL: Complete Translation Required:
             },
             {
               role: 'user',
-              content: chunk
+              content: userContent
             }
           ]
         };
+
+        if (useContextAware) {
+          requestParams.response_format = responseFormatSchema;
+        }
 
         if (model.startsWith('gpt-5')) {
           requestParams.verbosity = verbosity;
@@ -113,7 +211,13 @@ CRITICAL: Complete Translation Required:
           throw new Error('Invalid response from OpenAI API');
         }
 
-        return response.choices[0].message.content;
+        const rawContent = response.choices[0].message.content;
+
+        if (useContextAware) {
+          return parseTranslationResponse(rawContent);
+        }
+
+        return rawContent;
       } catch (error) {
         const isLastAttempt = attempt === maxAttempts;
         const shouldRetry = isRetryableError(error);
