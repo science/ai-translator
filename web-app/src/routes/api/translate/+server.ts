@@ -9,7 +9,7 @@ import {
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
-		const { content, filename, model, chunkSize, reasoningEffort, stream } = await request.json();
+		const { content, filename, model, chunkSize, reasoningEffort, contextAware = true, stream } = await request.json();
 
 		if (!content) {
 			return json({ error: 'No content provided' }, { status: 400 });
@@ -27,6 +27,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		const translator = createTranslator({
 			model: model || 'gpt-4o',
 			reasoningEffort: reasoningEffort || 'medium',
+			contextAware: contextAware,
 			verbose: false
 		});
 

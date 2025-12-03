@@ -32,6 +32,7 @@
 	let model = $state('gpt-5-mini');
 	let chunkSize = $state(4000);
 	let reasoningEffort = $state('medium');
+	let contextAware = $state(true);
 	let isTranslating = $state(false);
 	let japaneseOnlyMarkdown = $state('');
 	let bilingualMarkdown = $state('');
@@ -42,6 +43,11 @@
 	onMount(async () => {
 		if (browser) {
 			await loadDocuments();
+			// Load context-aware setting from localStorage
+			const storedContextAware = localStorage.getItem('context_aware_enabled');
+			if (storedContextAware !== null) {
+				contextAware = storedContextAware === 'true';
+			}
 		}
 	});
 
@@ -100,6 +106,7 @@
 					filename: selectedDoc.name,
 					model,
 					chunkSize,
+					contextAware,
 					...(is5SeriesModel ? { reasoningEffort } : {}),
 					stream: true
 				})

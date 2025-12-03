@@ -13,6 +13,7 @@
 	let defaultModel = $state('gpt-5-mini');
 	let defaultChunkSize = $state('4000');
 	let defaultReasoningEffort = $state('medium');
+	let contextAwareEnabled = $state(true);
 
 	// Storage state
 	let storageUsed = $state<number | null>(null);
@@ -52,6 +53,9 @@
 		const storedReasoningEffort = localStorage.getItem('default_reasoning_effort');
 		if (storedReasoningEffort) defaultReasoningEffort = storedReasoningEffort;
 
+		const storedContextAware = localStorage.getItem('context_aware_enabled');
+		if (storedContextAware !== null) contextAwareEnabled = storedContextAware === 'true';
+
 		// Load storage estimate
 		loadStorageEstimate();
 	});
@@ -76,6 +80,7 @@
 			localStorage.setItem('default_model', defaultModel);
 			localStorage.setItem('default_chunk_size', defaultChunkSize);
 			localStorage.setItem('default_reasoning_effort', defaultReasoningEffort);
+			localStorage.setItem('context_aware_enabled', String(contextAwareEnabled));
 		}
 	}
 
@@ -207,6 +212,26 @@
 						</select>
 					</div>
 				{/if}
+
+				<div class="flex items-center justify-between py-3 border-t border-gray-200">
+					<div>
+						<label for="context-aware" class="text-sm font-medium text-gray-700">Context-Aware Translation</label>
+						<p class="text-xs text-gray-500 mt-1">Provides AI with surrounding context for better tone consistency</p>
+					</div>
+					<button
+						id="context-aware"
+						type="button"
+						role="switch"
+						aria-checked={contextAwareEnabled}
+						data-testid="context-aware-toggle"
+						onclick={() => contextAwareEnabled = !contextAwareEnabled}
+						class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 {contextAwareEnabled ? 'bg-blue-600' : 'bg-gray-200'}"
+					>
+						<span
+							class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out {contextAwareEnabled ? 'translate-x-5' : 'translate-x-0'}"
+						></span>
+					</button>
+				</div>
 
 				<button
 					type="button"
