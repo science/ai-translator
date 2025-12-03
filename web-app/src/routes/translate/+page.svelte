@@ -13,10 +13,14 @@
 		createDeterminateProgress,
 		updateProgress,
 		completeProgress,
-		resetProgress,
-		parseProgressEvent
+		resetProgress
 	} from '$lib/progress';
 	import ProgressIndicator from '$lib/components/ProgressIndicator.svelte';
+
+	// Browser services for direct OpenAI calls
+	import { chunkBySize } from '$lib/services/chunker';
+	import { createTranslator } from '$lib/services/translator';
+	import { translateDocument } from '$lib/services/translationEngine';
 
 	// Display-friendly version for the list
 	interface DocumentListItem {
@@ -71,6 +75,28 @@
 	// Get the selected document info (not full document with content)
 	let selectedDocInfo = $derived(documents.find((doc) => doc.id === selectedDocId));
 
+	/**
+	 * Assembles Japanese-only markdown from translated chunks
+	 */
+	function assembleJapaneseOnly(
+		chunks: Array<{ translatedContent: string }>
+	): string {
+		return chunks.map((chunk) => chunk.translatedContent).join('\n\n');
+	}
+
+	/**
+	 * Assembles bilingual markdown from translated chunks
+	 */
+	function assembleBilingual(
+		chunks: Array<{ originalContent: string; translatedContent: string }>
+	): string {
+		if (chunks.length === 0) return '';
+
+		return chunks
+			.map((chunk) => `${chunk.originalContent}\n\n---\n\n${chunk.translatedContent}`)
+			.join('\n\n---\n\n');
+	}
+
 	async function handleTranslate() {
 		if (!selectedDocInfo) return;
 
@@ -81,6 +107,12 @@
 		progress = createDeterminateProgress('Starting translation...');
 
 		try {
+			// Get API key from localStorage
+			const apiKey = localStorage.getItem('openai_api_key');
+			if (!apiKey) {
+				throw new Error('OpenAI API key not found. Please set it in Settings.');
+			}
+
 			// Fetch the full document with content from IndexedDB
 			const selectedDoc = await getDocument(selectedDocId);
 			if (!selectedDoc) {
@@ -96,79 +128,47 @@
 				content = await selectedDoc.content.text();
 			}
 
-			const response = await fetch('/api/translate', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					content,
-					filename: selectedDoc.name,
-					model,
-					chunkSize,
-					contextAware,
-					...(is5SeriesModel ? { reasoningEffort } : {}),
-					stream: true
-				})
+			// Step 1: Chunk the content
+			progress = updateProgress(progress as ReturnType<typeof createDeterminateProgress>, {
+				percentage: 5,
+				message: 'Chunking document...'
 			});
 
-			if (!response.ok) {
-				const errorData = await response.json();
-				throw new Error(errorData.error || 'Translation failed');
-			}
+			const chunks = chunkBySize(content, chunkSize);
 
-			// Process SSE stream
-			const reader = response.body?.getReader();
-			if (!reader) {
-				throw new Error('No response body');
-			}
+			// Step 2: Create translator with browser service
+			const translator = createTranslator({
+				apiKey,
+				model,
+				contextAware,
+				reasoningEffort: is5SeriesModel ? reasoningEffort : undefined
+			});
 
-			const decoder = new TextDecoder();
-			let buffer = '';
-
-			while (true) {
-				const { done, value } = await reader.read();
-				if (done) break;
-
-				buffer += decoder.decode(value, { stream: true });
-				const lines = buffer.split('\n\n');
-				buffer = lines.pop() || '';
-
-				for (const line of lines) {
-					if (line.startsWith('data: ')) {
-						const data = line.slice(6);
-						try {
-							const event = JSON.parse(data);
-
-							if (event.type === 'progress' && event.percentage !== undefined && event.message) {
-								progress = updateProgress(progress as ReturnType<typeof createDeterminateProgress>, {
-									percentage: event.percentage,
-									message: event.message
-								});
-							} else if (event.type === 'complete') {
-								japaneseOnlyMarkdown = event.japaneseOnly;
-								bilingualMarkdown = event.bilingual;
-								progress = completeProgress(progress as ReturnType<typeof createDeterminateProgress>, 'Translation complete!');
-							} else if (event.type === 'error' && event.error) {
-								throw new Error(event.error);
-							}
-						} catch (parseError) {
-							// Try using parseProgressEvent for standard progress events
-							const event = parseProgressEvent(data);
-							if (event) {
-								if (event.type === 'progress' && event.percentage !== undefined && event.message) {
-									progress = updateProgress(progress as ReturnType<typeof createDeterminateProgress>, {
-										percentage: event.percentage,
-										message: event.message
-									});
-								} else if (event.type === 'error' && event.error) {
-									throw new Error(event.error);
-								}
-							}
-						}
-					}
+			// Step 3: Translate document with progress callback
+			const { translatedChunks } = await translateDocument(chunks, translator.translateChunk, {
+				onProgress: (prog) => {
+					// Map progress to 10-95% (reserving 0-10 for chunking, 95-100 for assembly)
+					const mappedPercentage = 10 + Math.round(prog.percentComplete * 0.85);
+					progress = updateProgress(progress as ReturnType<typeof createDeterminateProgress>, {
+						percentage: mappedPercentage,
+						message: `Translating chunk ${prog.current}/${prog.total}...`
+					});
 				}
-			}
+			});
+
+			// Step 4: Assemble outputs
+			progress = updateProgress(progress as ReturnType<typeof createDeterminateProgress>, {
+				percentage: 95,
+				message: 'Assembling results...'
+			});
+
+			japaneseOnlyMarkdown = assembleJapaneseOnly(translatedChunks);
+			bilingualMarkdown = assembleBilingual(translatedChunks);
+
+			progress = completeProgress(
+				progress as ReturnType<typeof createDeterminateProgress>,
+				'Translation complete!'
+			);
 
 			// Store both translated documents in IndexedDB
 			const baseName = selectedDoc.name.replace(/\.md$/i, '');
