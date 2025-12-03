@@ -23,11 +23,20 @@ test.describe('App Layout', () => {
 		await expect(page.getByRole('link', { name: /my documents/i })).toBeVisible();
 	});
 
-	test('displays settings button in header', async ({ page }) => {
+	test('displays Settings link in sidebar navigation', async ({ page }) => {
 		await page.goto('/');
 
-		const settingsButton = page.getByRole('link', { name: /settings/i });
-		await expect(settingsButton).toBeVisible();
+		const sidebar = page.locator('nav[aria-label="Main navigation"]');
+		const settingsLink = sidebar.getByRole('link', { name: /settings/i });
+		await expect(settingsLink).toBeVisible();
+	});
+
+	test('Settings link is NOT in header', async ({ page }) => {
+		await page.goto('/');
+
+		const header = page.locator('header');
+		const settingsInHeader = header.getByRole('link', { name: /settings/i });
+		await expect(settingsInHeader).not.toBeVisible();
 	});
 
 	test('navigates to Upload page when clicking Upload link', async ({ page }) => {
@@ -89,5 +98,13 @@ test.describe('App Layout', () => {
 		await page.getByRole('link', { name: /convert pdf/i }).click();
 		const convertLink = page.getByRole('link', { name: /convert pdf/i });
 		await expect(convertLink).toHaveAttribute('aria-current', 'page');
+	});
+
+	test('highlights Settings link when on settings page', async ({ page }) => {
+		await page.goto('/settings');
+
+		const sidebar = page.locator('nav[aria-label="Main navigation"]');
+		const settingsLink = sidebar.getByRole('link', { name: /settings/i });
+		await expect(settingsLink).toHaveAttribute('aria-current', 'page');
 	});
 });
