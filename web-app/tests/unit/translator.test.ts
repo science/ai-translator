@@ -296,6 +296,86 @@ describe('translator service', () => {
 				const body = JSON.parse(fetchCall[1]?.body as string);
 				expect(body.response_format).toBeUndefined();
 			});
+
+			it('should use "none" as default reasoning_effort for gpt-5.1 models', async () => {
+				globalThis.fetch = vi.fn().mockResolvedValue({
+					ok: true,
+					json: () =>
+						Promise.resolve({
+							id: 'chatcmpl-123',
+							choices: [{ message: { content: '{"translation": "テスト"}' } }]
+						})
+				});
+
+				const translator = createTranslator({ apiKey: 'test-key', model: 'gpt-5.1' });
+				await translator.translateChunk('Test');
+
+				const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+				const body = JSON.parse(fetchCall[1]?.body as string);
+				expect(body.reasoning_effort).toBe('none');
+			});
+
+			it('should convert "minimal" to "none" for gpt-5.1 models', async () => {
+				globalThis.fetch = vi.fn().mockResolvedValue({
+					ok: true,
+					json: () =>
+						Promise.resolve({
+							id: 'chatcmpl-123',
+							choices: [{ message: { content: '{"translation": "テスト"}' } }]
+						})
+				});
+
+				const translator = createTranslator({
+					apiKey: 'test-key',
+					model: 'gpt-5.1',
+					reasoningEffort: 'minimal'
+				});
+				await translator.translateChunk('Test');
+
+				const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+				const body = JSON.parse(fetchCall[1]?.body as string);
+				expect(body.reasoning_effort).toBe('none');
+			});
+
+			it('should convert "none" to "minimal" for gpt-5 models', async () => {
+				globalThis.fetch = vi.fn().mockResolvedValue({
+					ok: true,
+					json: () =>
+						Promise.resolve({
+							id: 'chatcmpl-123',
+							choices: [{ message: { content: '{"translation": "テスト"}' } }]
+						})
+				});
+
+				const translator = createTranslator({
+					apiKey: 'test-key',
+					model: 'gpt-5',
+					reasoningEffort: 'none'
+				});
+				await translator.translateChunk('Test');
+
+				const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+				const body = JSON.parse(fetchCall[1]?.body as string);
+				expect(body.reasoning_effort).toBe('minimal');
+			});
+
+			it('should use default "medium" reasoning_effort for gpt-5 models', async () => {
+				globalThis.fetch = vi.fn().mockResolvedValue({
+					ok: true,
+					json: () =>
+						Promise.resolve({
+							id: 'chatcmpl-123',
+							choices: [{ message: { content: '{"translation": "テスト"}' } }]
+						})
+				});
+
+				const translator = createTranslator({ apiKey: 'test-key', model: 'gpt-5' });
+				await translator.translateChunk('Test');
+
+				const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+				const body = JSON.parse(fetchCall[1]?.body as string);
+				expect(body.reasoning_effort).toBe('medium');
+			});
 		});
 	});
 });

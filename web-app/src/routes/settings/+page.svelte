@@ -22,6 +22,28 @@
 	// Check if the selected model is a 5-series model (supports reasoning effort)
 	let is5SeriesModel = $derived(defaultModel.startsWith('gpt-5'));
 
+	// Check if the model is GPT-5.1 family (supports "none", not "minimal")
+	let isGpt51Model = $derived(/gpt-5\.1/.test(defaultModel));
+
+	// Get reasoning effort options based on model type
+	// GPT-5.1: None, Low, Medium, High
+	// GPT-5/5-mini/5-nano: Minimal, Low, Medium, High
+	let reasoningEffortOptions = $derived(
+		isGpt51Model
+			? [
+					{ value: 'none', label: 'None' },
+					{ value: 'low', label: 'Low' },
+					{ value: 'medium', label: 'Medium' },
+					{ value: 'high', label: 'High' }
+				]
+			: [
+					{ value: 'minimal', label: 'Minimal' },
+					{ value: 'low', label: 'Low' },
+					{ value: 'medium', label: 'Medium' },
+					{ value: 'high', label: 'High' }
+				]
+	);
+
 	// Format bytes to human-readable string
 	function formatBytes(bytes: number): string {
 		if (bytes === 0) return '0 B';
@@ -206,9 +228,9 @@
 							bind:value={defaultReasoningEffort}
 							class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
 						>
-							<option value="low">Low</option>
-							<option value="medium">Medium</option>
-							<option value="high">High</option>
+							{#each reasoningEffortOptions as option (option.value)}
+							<option value={option.value}>{option.label}</option>
+						{/each}
 						</select>
 					</div>
 				{/if}

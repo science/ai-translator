@@ -195,6 +195,86 @@ describe('rectifier service', () => {
 					'Invalid response from OpenAI API'
 				);
 			});
+
+			it('should use "none" as default reasoning_effort for gpt-5.1 models', async () => {
+				globalThis.fetch = vi.fn().mockResolvedValue({
+					ok: true,
+					json: () =>
+						Promise.resolve({
+							id: 'chatcmpl-123',
+							choices: [{ message: { content: 'Fixed text' } }]
+						})
+				});
+
+				const rectifier = createRectifier({ apiKey: 'test-key', model: 'gpt-5.1' });
+				await rectifier.rectifyChunk('Broken text');
+
+				const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+				const body = JSON.parse(fetchCall[1]?.body as string);
+				expect(body.reasoning_effort).toBe('none');
+			});
+
+			it('should convert "minimal" to "none" for gpt-5.1 models', async () => {
+				globalThis.fetch = vi.fn().mockResolvedValue({
+					ok: true,
+					json: () =>
+						Promise.resolve({
+							id: 'chatcmpl-123',
+							choices: [{ message: { content: 'Fixed text' } }]
+						})
+				});
+
+				const rectifier = createRectifier({
+					apiKey: 'test-key',
+					model: 'gpt-5.1',
+					reasoningEffort: 'minimal'
+				});
+				await rectifier.rectifyChunk('Broken text');
+
+				const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+				const body = JSON.parse(fetchCall[1]?.body as string);
+				expect(body.reasoning_effort).toBe('none');
+			});
+
+			it('should convert "none" to "minimal" for gpt-5 models', async () => {
+				globalThis.fetch = vi.fn().mockResolvedValue({
+					ok: true,
+					json: () =>
+						Promise.resolve({
+							id: 'chatcmpl-123',
+							choices: [{ message: { content: 'Fixed text' } }]
+						})
+				});
+
+				const rectifier = createRectifier({
+					apiKey: 'test-key',
+					model: 'gpt-5',
+					reasoningEffort: 'none'
+				});
+				await rectifier.rectifyChunk('Broken text');
+
+				const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+				const body = JSON.parse(fetchCall[1]?.body as string);
+				expect(body.reasoning_effort).toBe('minimal');
+			});
+
+			it('should use default "medium" reasoning_effort for gpt-5 models', async () => {
+				globalThis.fetch = vi.fn().mockResolvedValue({
+					ok: true,
+					json: () =>
+						Promise.resolve({
+							id: 'chatcmpl-123',
+							choices: [{ message: { content: 'Fixed text' } }]
+						})
+				});
+
+				const rectifier = createRectifier({ apiKey: 'test-key', model: 'gpt-5' });
+				await rectifier.rectifyChunk('Broken text');
+
+				const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+				const body = JSON.parse(fetchCall[1]?.body as string);
+				expect(body.reasoning_effort).toBe('medium');
+			});
 		});
 	});
 });

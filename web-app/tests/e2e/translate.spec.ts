@@ -463,6 +463,62 @@ test.describe('Model Selection', () => {
 		await expect(reasoningLabel).not.toBeVisible();
 	});
 
+	test('gpt-5.1 shows "None" option for reasoning effort', async ({ page }) => {
+		await page.goto('/translate');
+		await page.waitForLoadState('networkidle');
+
+		// Select gpt-5.1
+		const modelSelect = page.getByTestId('model-select');
+		await modelSelect.selectOption('gpt-5.1');
+
+		// Get reasoning effort options
+		const reasoningSelect = page.locator('select').filter({ hasText: /Low|Medium|High/ }).last();
+		const options = await reasoningSelect.locator('option').allTextContents();
+
+		// GPT-5.1 should have: None, Low, Medium, High
+		expect(options).toEqual(['None', 'Low', 'Medium', 'High']);
+	});
+
+	test('gpt-5-mini shows "Minimal" option for reasoning effort', async ({ page }) => {
+		await page.goto('/translate');
+		await page.waitForLoadState('networkidle');
+
+		// gpt-5-mini is the default
+		const modelSelect = page.getByTestId('model-select');
+		await expect(modelSelect).toHaveValue('gpt-5-mini');
+
+		// Get reasoning effort options (the second select after model)
+		const reasoningSelect = page.locator('select').filter({ hasText: /Low|Medium|High/ }).last();
+		const options = await reasoningSelect.locator('option').allTextContents();
+
+		// GPT-5-mini should have: Minimal, Low, Medium, High
+		expect(options).toEqual(['Minimal', 'Low', 'Medium', 'High']);
+	});
+
+	test('reasoning effort options change when switching between gpt-5.1 and gpt-5-mini', async ({
+		page
+	}) => {
+		await page.goto('/translate');
+		await page.waitForLoadState('networkidle');
+
+		const modelSelect = page.getByTestId('model-select');
+		const reasoningSelect = page.locator('select').filter({ hasText: /Low|Medium|High/ }).last();
+
+		// Start with gpt-5-mini (default)
+		let options = await reasoningSelect.locator('option').allTextContents();
+		expect(options).toEqual(['Minimal', 'Low', 'Medium', 'High']);
+
+		// Switch to gpt-5.1
+		await modelSelect.selectOption('gpt-5.1');
+		options = await reasoningSelect.locator('option').allTextContents();
+		expect(options).toEqual(['None', 'Low', 'Medium', 'High']);
+
+		// Switch back to gpt-5-mini
+		await modelSelect.selectOption('gpt-5-mini');
+		options = await reasoningSelect.locator('option').allTextContents();
+		expect(options).toEqual(['Minimal', 'Low', 'Medium', 'High']);
+	});
+
 	test('OpenAI API call includes reasoning_effort when 5-series model is selected', async ({
 		page
 	}) => {

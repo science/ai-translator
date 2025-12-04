@@ -148,4 +148,90 @@ describe('Rectifier', () => {
       expect(result).toContain('broad term');
     });
   });
+
+  describe('reasoning_effort model validation', () => {
+    it('should use "none" as default reasoning_effort for gpt-5.1 models', async () => {
+      const mockResponse = {
+        choices: [{
+          message: { content: 'Corrected text' }
+        }]
+      };
+      mockCreate.mockResolvedValue(mockResponse);
+
+      const rectifier = createRectifier({ model: 'gpt-5.1' });
+      rectifier.client.chat.completions.create = mockCreate;
+
+      await rectifier.rectifyChunk({ index: 0, type: 'preamble', content: 'test' });
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gpt-5.1',
+          reasoning_effort: 'none'
+        })
+      );
+    });
+
+    it('should convert "minimal" to "none" for gpt-5.1 models', async () => {
+      const mockResponse = {
+        choices: [{
+          message: { content: 'Corrected text' }
+        }]
+      };
+      mockCreate.mockResolvedValue(mockResponse);
+
+      const rectifier = createRectifier({ model: 'gpt-5.1', reasoningEffort: 'minimal' });
+      rectifier.client.chat.completions.create = mockCreate;
+
+      await rectifier.rectifyChunk({ index: 0, type: 'preamble', content: 'test' });
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gpt-5.1',
+          reasoning_effort: 'none'
+        })
+      );
+    });
+
+    it('should convert "none" to "minimal" for gpt-5 models', async () => {
+      const mockResponse = {
+        choices: [{
+          message: { content: 'Corrected text' }
+        }]
+      };
+      mockCreate.mockResolvedValue(mockResponse);
+
+      const rectifier = createRectifier({ model: 'gpt-5', reasoningEffort: 'none' });
+      rectifier.client.chat.completions.create = mockCreate;
+
+      await rectifier.rectifyChunk({ index: 0, type: 'preamble', content: 'test' });
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gpt-5',
+          reasoning_effort: 'minimal'
+        })
+      );
+    });
+
+    it('should use default "medium" reasoning_effort for gpt-5 models', async () => {
+      const mockResponse = {
+        choices: [{
+          message: { content: 'Corrected text' }
+        }]
+      };
+      mockCreate.mockResolvedValue(mockResponse);
+
+      const rectifier = createRectifier({ model: 'gpt-5' });
+      rectifier.client.chat.completions.create = mockCreate;
+
+      await rectifier.rectifyChunk({ index: 0, type: 'preamble', content: 'test' });
+
+      expect(mockCreate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gpt-5',
+          reasoning_effort: 'medium'
+        })
+      );
+    });
+  });
 });

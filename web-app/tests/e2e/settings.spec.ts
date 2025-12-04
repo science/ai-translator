@@ -165,6 +165,62 @@ test.describe('Settings Page - Default Settings', () => {
 		// Reasoning effort should be visible again
 		await expect(reasoningLabel).toBeVisible();
 	});
+
+	test('gpt-5.1 shows "None" option for reasoning effort', async ({ page }) => {
+		await page.goto('/settings');
+
+		// Select gpt-5.1
+		const modelSelect = page.locator('#default-model');
+		await modelSelect.selectOption('gpt-5.1');
+
+		// Get reasoning effort options
+		const reasoningSelect = page.locator('#default-reasoning-effort');
+		const options = await reasoningSelect.locator('option').allTextContents();
+
+		// GPT-5.1 should have: None, Low, Medium, High
+		expect(options).toEqual(['None', 'Low', 'Medium', 'High']);
+	});
+
+	test('gpt-5-mini shows "Minimal" option for reasoning effort', async ({ page }) => {
+		await page.goto('/settings');
+
+		// gpt-5-mini is the default
+		const modelSelect = page.locator('#default-model');
+		await expect(modelSelect).toHaveValue('gpt-5-mini');
+
+		// Get reasoning effort options
+		const reasoningSelect = page.locator('#default-reasoning-effort');
+		const options = await reasoningSelect.locator('option').allTextContents();
+
+		// GPT-5-mini should have: Minimal, Low, Medium, High
+		expect(options).toEqual(['Minimal', 'Low', 'Medium', 'High']);
+	});
+
+	test('reasoning effort options change when switching between gpt-5.1 and gpt-5-mini', async ({
+		page
+	}) => {
+		await page.goto('/settings');
+
+		const modelSelect = page.locator('#default-model');
+		const reasoningSelect = page.locator('#default-reasoning-effort');
+
+		// Wait for reasoning effort select to be visible (gpt-5-mini is default)
+		await expect(reasoningSelect).toBeVisible();
+
+		// Start with gpt-5-mini (default)
+		let options = await reasoningSelect.locator('option').allTextContents();
+		expect(options).toEqual(['Minimal', 'Low', 'Medium', 'High']);
+
+		// Switch to gpt-5.1
+		await modelSelect.selectOption('gpt-5.1');
+		options = await reasoningSelect.locator('option').allTextContents();
+		expect(options).toEqual(['None', 'Low', 'Medium', 'High']);
+
+		// Switch back to gpt-5-mini
+		await modelSelect.selectOption('gpt-5-mini');
+		options = await reasoningSelect.locator('option').allTextContents();
+		expect(options).toEqual(['Minimal', 'Low', 'Medium', 'High']);
+	});
 });
 
 test.describe('Settings Page - Storage Management', () => {
