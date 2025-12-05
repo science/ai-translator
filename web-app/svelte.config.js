@@ -9,7 +9,6 @@ const config = {
 
 	kit: {
 		adapter: adapter({
-			// GitHub Pages serves from a subdirectory based on repo name
 			// Set fallback for SPA routing
 			fallback: '404.html'
 		}),

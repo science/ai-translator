@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import { page } from '$app/state';
+	import { base } from '$app/paths';
 
 	let { children } = $props();
 
@@ -13,11 +14,25 @@
 		{ href: '/settings', label: 'Settings', icon: 'M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 11-6 0 3 3 0 016 0z' }
 	];
 
-	function isActive(href: string): boolean {
-		if (href === '/') {
-			return page.url.pathname === '/';
+	// Get the pathname without the base prefix for comparison
+	function getRelativePath(pathname: string): string {
+		if (base && pathname.startsWith(base)) {
+			return pathname.slice(base.length) || '/';
 		}
-		return page.url.pathname.startsWith(href);
+		return pathname;
+	}
+
+	function isActive(href: string): boolean {
+		const relativePath = getRelativePath(page.url.pathname);
+		if (href === '/') {
+			return relativePath === '/';
+		}
+		return relativePath.startsWith(href);
+	}
+
+	// Construct full href with base path
+	function fullHref(href: string): string {
+		return href === '/' ? base || '/' : base + href;
 	}
 </script>
 
@@ -47,7 +62,7 @@
 				{#each navItems as item}
 					<li>
 						<a
-							href={item.href}
+							href={fullHref(item.href)}
 							class="flex items-center gap-3 px-3 py-2 rounded-lg transition-colors {isActive(item.href) ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-100'}"
 							aria-current={isActive(item.href) ? 'page' : undefined}
 						>

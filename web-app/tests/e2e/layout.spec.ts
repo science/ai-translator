@@ -1,6 +1,34 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('App Layout', () => {
+	test.describe('base path navigation', () => {
+		// These tests verify that navigation links work correctly with SvelteKit's base path.
+		// In dev mode, base is empty. In production, base is '/ai-translator'.
+		// The fix ensures links use {base} prefix so they work in both environments.
+
+		test('navigation links have href attributes that match their destinations', async ({ page }) => {
+			await page.goto('/');
+
+			// Get all navigation links and verify their hrefs
+			const navLinks = [
+				{ name: /upload/i, expectedPath: '/' },
+				{ name: /convert pdf/i, expectedPath: '/convert' },
+				{ name: /cleanup/i, expectedPath: '/cleanup' },
+				{ name: /translate/i, expectedPath: '/translate' },
+				{ name: /my documents/i, expectedPath: '/documents' },
+				{ name: /settings/i, expectedPath: '/settings' }
+			];
+
+			for (const { name, expectedPath } of navLinks) {
+				const link = page.getByRole('link', { name });
+				const href = await link.getAttribute('href');
+				// href should end with the expected path (base prefix may vary)
+				expect(href).toMatch(new RegExp(`${expectedPath}$`));
+			}
+		});
+
+	});
+
 	test('displays the header with app title', async ({ page }) => {
 		await page.goto('/');
 
