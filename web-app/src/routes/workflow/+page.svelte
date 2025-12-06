@@ -31,6 +31,7 @@
 		formatElapsedTime
 	} from '$lib/workflow';
 	import { runWorkflow, type WorkflowResult } from '$lib/services/workflowEngine';
+	import { exportMarkdownAsDocx } from '$lib/services/docxExporter';
 
 	// State
 	let workflowState = $state<WorkflowState>(createWorkflowState());
@@ -325,6 +326,11 @@
 		a.click();
 		URL.revokeObjectURL(url);
 	}
+
+	async function downloadAsDocx(content: string, filename: string) {
+		const docxFilename = filename.replace(/\.md$/i, '.docx');
+		await exportMarkdownAsDocx(content, docxFilename);
+	}
 </script>
 
 <div class="max-w-4xl">
@@ -555,12 +561,24 @@
 				] as output}
 					<div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
 						<span class="text-sm font-medium text-gray-700">{output.label}</span>
-						<button
-							onclick={() => workflowResult && downloadResult(workflowResult[output.key as keyof WorkflowResult], output.filename)}
-							class="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-						>
-							Download
-						</button>
+						<div class="flex gap-2">
+							<button
+								data-testid="download-md-{output.key}"
+								onclick={() => workflowResult && downloadResult(workflowResult[output.key as keyof WorkflowResult], output.filename)}
+								class="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
+								title="Download as Markdown"
+							>
+								MD
+							</button>
+							<button
+								data-testid="download-docx-{output.key}"
+								onclick={() => workflowResult && downloadAsDocx(workflowResult[output.key as keyof WorkflowResult], output.filename)}
+								class="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+								title="Download as Word document"
+							>
+								DOCX
+							</button>
+						</div>
 					</div>
 				{/each}
 			</div>

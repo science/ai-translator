@@ -10,6 +10,7 @@
 		getDocument,
 		deleteDocument as deleteDocFromDB
 	} from '$lib/storage';
+	import { exportMarkdownAsDocx } from '$lib/services/docxExporter';
 
 	// Display-friendly version of StoredDocument (content not needed for list)
 	interface DocumentListItem {
@@ -201,6 +202,17 @@
 		URL.revokeObjectURL(url);
 	}
 
+	async function exportAsDocx(id: string, docName: string) {
+		const doc = await getDocument(id);
+		if (!doc || doc.type !== 'markdown') return;
+
+		const content = doc.content as string;
+		// Replace .md extension with .docx
+		const docxFilename = docName.replace(/\.md$/i, '.docx');
+
+		await exportMarkdownAsDocx(content, docxFilename);
+	}
+
 	async function previewDocument(id: string, docType: 'pdf' | 'markdown' | 'text') {
 		if (docType === 'pdf') {
 			// For PDFs, open directly in new tab
@@ -389,6 +401,24 @@
 									/>
 								</svg>
 							</button>
+							{#if doc.type === 'markdown'}
+								<button
+									data-testid="export-docx"
+									onclick={() => exportAsDocx(doc.id, doc.name)}
+									class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+									title="Export as Word document"
+								>
+									<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+										/>
+										<text x="8" y="15" font-size="6" fill="currentColor" stroke="none">W</text>
+									</svg>
+								</button>
+							{/if}
 							<button
 								data-testid="delete-document"
 								onclick={() => deleteDocument(doc.id)}
