@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { clearAllStorage, setApiKey } from './helpers';
 
-test.describe('Complete Workflow Page', () => {
+test.describe('One Step Translation Page', () => {
 	test.beforeEach(async ({ page }) => {
 		await page.goto('/');
 		await clearAllStorage(page);
@@ -11,7 +11,7 @@ test.describe('Complete Workflow Page', () => {
 		await page.goto('/workflow');
 
 		// Check page title
-		await expect(page.locator('h1')).toContainText('Complete Workflow');
+		await expect(page.locator('h1')).toContainText('One Step Translation');
 
 		// Check all step sections are visible
 		await expect(page.getByText('Upload PDF')).toBeVisible();
@@ -25,8 +25,8 @@ test.describe('Complete Workflow Page', () => {
 	test('navigation shows workflow link with separator', async ({ page }) => {
 		await page.goto('/');
 
-		// Check that "Complete Workflow" link is in navigation
-		const navLink = page.getByRole('link', { name: 'Complete Workflow' });
+		// Check that "One Step Translation" link is in navigation
+		const navLink = page.getByRole('link', { name: 'One Step Translation' });
 		await expect(navLink).toBeVisible();
 
 		// Check separator exists (border element between workflow and other nav items)
@@ -38,7 +38,7 @@ test.describe('Complete Workflow Page', () => {
 		await page.goto('/workflow');
 
 		// The workflow link should have the active style (bg-blue-600)
-		const navLink = page.getByRole('link', { name: 'Complete Workflow' });
+		const navLink = page.getByRole('link', { name: 'One Step Translation' });
 		await expect(navLink).toHaveClass(/bg-blue-600/);
 	});
 
@@ -136,13 +136,13 @@ test.describe('Workflow Page Navigation', () => {
 	test('can navigate to workflow from sidebar', async ({ page }) => {
 		await page.goto('/');
 
-		// Click on Complete Workflow link - use force click since it's in fixed nav
-		const workflowLink = page.getByRole('link', { name: 'Complete Workflow' });
+		// Click on One Step Translation link - use force click since it's in fixed nav
+		const workflowLink = page.getByRole('link', { name: 'One Step Translation' });
 		await workflowLink.click({ force: true });
 
 		// Should be on workflow page
 		await expect(page).toHaveURL(/\/workflow/);
-		await expect(page.locator('h1')).toContainText('Complete Workflow');
+		await expect(page.locator('h1')).toContainText('One Step Translation');
 	});
 
 	test('can navigate back to upload from workflow', async ({ page }) => {
@@ -162,14 +162,14 @@ test.describe('Workflow Page Navigation', () => {
 		// Get the navigation container
 		const nav = page.locator('nav[aria-label="Main navigation"]');
 
-		// Complete Workflow should be the first link
+		// One Step Translation should be the first link
 		const firstLink = nav.locator('a').first();
-		await expect(firstLink).toContainText('Complete Workflow');
+		await expect(firstLink).toContainText('One Step Translation');
 
 		// The separator should come after the workflow link
 		// This is checked by ensuring the workflow link is before the other nav items
 		const uploadLink = page.getByRole('link', { name: 'Upload' });
-		const workflowLink = page.getByRole('link', { name: 'Complete Workflow' });
+		const workflowLink = page.getByRole('link', { name: 'One Step Translation' });
 
 		// Get bounding boxes to verify order
 		const workflowBox = await workflowLink.boundingBox();
@@ -195,8 +195,8 @@ test.describe('Workflow UI States', () => {
 
 		const startButton = page.getByRole('button', { name: /start complete workflow/i });
 
-		// Button text should be "Start Complete Workflow" initially
-		await expect(startButton).toContainText('Start Complete Workflow');
+		// Button text should be "Start One Step Translation" initially
+		await expect(startButton).toContainText('Start One Step Translation');
 	});
 
 	test('shows lightning bolt icon in start button', async ({ page }) => {

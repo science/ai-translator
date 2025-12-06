@@ -8,7 +8,7 @@
 	// Primary workflow item (shown at top with separator)
 	const workflowItem = {
 		href: '/workflow',
-		label: 'Complete Workflow',
+		label: 'One Step Translation',
 		icon: 'M13 10V3L4 14h7v7l9-11h-7z', // Lightning bolt icon for "one-shot" action
 		isPrimary: true
 	};

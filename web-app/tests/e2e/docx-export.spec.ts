@@ -184,6 +184,6 @@ test.describe('DOCX Export - Workflow Page', () => {
 
 		// The download buttons are only visible after workflow completes
 		// Just verify the page loads correctly
-		await expect(page.locator('h1')).toContainText('Complete Workflow');
+		await expect(page.locator('h1')).toContainText('One Step Translation');
 	});
 });
