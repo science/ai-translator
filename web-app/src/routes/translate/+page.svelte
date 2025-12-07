@@ -20,7 +20,7 @@
 		getLanguageHistory,
 		addLanguageToHistory
 	} from '$lib/languageHistory';
-	import { getLanguageCode, getLanguageName } from '$lib/languageCode';
+	import { getLanguageCode } from '$lib/languageCode';
 
 	// Browser services for direct OpenAI calls
 	import { chunkBySize } from '$lib/services/chunker';
@@ -110,9 +110,6 @@
 
 	// Get the selected document info (not full document with content)
 	let selectedDocInfo = $derived(documents.find((doc) => doc.id === selectedDocId));
-
-	// Derived language display name for tabs
-	let displayLanguageName = $derived(getLanguageName(targetLanguage));
 
 	// Validation: language is required
 	let languageError = $derived(languageTouched && !targetLanguage.trim() ? 'Target language is required' : '');
@@ -442,7 +439,7 @@
 						? 'border-blue-600 text-blue-600'
 						: 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
 				>
-					{displayLanguageName} Only
+					Target Language Only
 				</button>
 				<button
 					role="tab"

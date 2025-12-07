@@ -55,7 +55,8 @@ describe('Workflow Engine', () => {
 		model: 'gpt-5-mini',
 		chunkSize: 4000,
 		reasoningEffort: 'medium',
-		contextAware: true
+		contextAware: true,
+		targetLanguage: 'Japanese'
 	};
 
 	beforeEach(() => {
@@ -205,7 +206,8 @@ describe('Workflow Engine', () => {
 				model: 'gpt-5.1',
 				chunkSize: 3000,
 				reasoningEffort: 'low',
-				contextAware: false
+				contextAware: false,
+				targetLanguage: 'German'
 			};
 
 			const options: WorkflowOptions = {

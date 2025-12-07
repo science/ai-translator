@@ -31,6 +31,7 @@ export interface TranslationSettings {
 	chunkSize: number;
 	reasoningEffort: string;
 	contextAware: boolean;
+	targetLanguage: string;
 }
 
 // Output documents from workflow
@@ -72,7 +73,8 @@ export const DEFAULT_TRANSLATION_SETTINGS: TranslationSettings = {
 	model: 'gpt-5-mini',
 	chunkSize: 4000,
 	reasoningEffort: 'medium',
-	contextAware: true
+	contextAware: true,
+	targetLanguage: ''
 };
 
 // Factory function to create initial workflow state

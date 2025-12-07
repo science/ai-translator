@@ -193,7 +193,7 @@ test.describe('Document Translation', () => {
 		await button.click({ force: true });
 
 		// Wait for result tabs to appear
-		await expect(page.getByRole('tab', { name: /japanese only/i })).toBeVisible({ timeout: 10000 });
+		await expect(page.getByRole('tab', { name: 'Target Language Only' })).toBeVisible({ timeout: 10000 });
 
 		// Verify the OpenAI API was called
 		const capturedRequest = getRequest();
@@ -230,7 +230,7 @@ test.describe('Document Translation', () => {
 		await button.click({ force: true });
 
 		// Should display tabs for both translation types
-		await expect(page.getByRole('tab', { name: /japanese only/i })).toBeVisible({ timeout: 10000 });
+		await expect(page.getByRole('tab', { name: 'Target Language Only' })).toBeVisible({ timeout: 10000 });
 		await expect(page.getByRole('tab', { name: /bilingual/i })).toBeVisible();
 
 		// Japanese content should be visible
@@ -377,9 +377,9 @@ test.describe('Document Translation', () => {
 		await button.click({ force: true });
 
 		// Wait for results
-		await expect(page.getByRole('tab', { name: /japanese only/i })).toBeVisible({ timeout: 10000 });
+		await expect(page.getByRole('tab', { name: 'Target Language Only' })).toBeVisible({ timeout: 10000 });
 
-		// Japanese only tab should be active by default and show Japanese content
+		// Target Language Only tab should be active by default and show translated content
 		await expect(page.getByText('日本語だけ')).toBeVisible();
 
 		// Click bilingual tab
@@ -577,7 +577,7 @@ test.describe('Model Selection', () => {
 		await button.click({ force: true });
 
 		// Wait for result
-		await expect(page.getByRole('tab', { name: /japanese only/i })).toBeVisible({ timeout: 10000 });
+		await expect(page.getByRole('tab', { name: 'Target Language Only' })).toBeVisible({ timeout: 10000 });
 
 		// Verify the OpenAI API was called with reasoning_effort
 		const capturedRequest = getRequest();
@@ -623,7 +623,7 @@ test.describe('Model Selection', () => {
 		await button.click({ force: true });
 
 		// Wait for result
-		await expect(page.getByRole('tab', { name: /japanese only/i })).toBeVisible({ timeout: 10000 });
+		await expect(page.getByRole('tab', { name: 'Target Language Only' })).toBeVisible({ timeout: 10000 });
 
 		// Verify the OpenAI API was called WITHOUT reasoning_effort
 		const capturedRequest = getRequest();
@@ -791,7 +791,7 @@ test.describe('Target Language Input', () => {
 		await translateButton.click({ force: true });
 
 		// Wait for translation to complete (button returns to enabled after completion)
-		await expect(page.getByRole('tab', { name: /german only/i })).toBeVisible({ timeout: 10000 });
+		await expect(page.getByRole('tab', { name: 'Target Language Only' })).toBeVisible({ timeout: 10000 });
 
 		// Check localStorage for the language history
 		const history = await page.evaluate(() => {
@@ -830,7 +830,7 @@ test.describe('Target Language Input', () => {
 		await translateButton.click({ force: true });
 
 		// Wait for translation to complete
-		await expect(page.getByRole('tab', { name: /german only/i })).toBeVisible({ timeout: 10000 });
+		await expect(page.getByRole('tab', { name: 'Target Language Only' })).toBeVisible({ timeout: 10000 });
 
 		// Check IndexedDB for the new documents
 		const docs = await getAllDocumentsFromIndexedDB(page);
@@ -872,7 +872,7 @@ test.describe('Target Language Input', () => {
 		await translateButton.click({ force: true });
 
 		// Wait for result
-		await expect(page.getByRole('tab', { name: /german only/i })).toBeVisible({ timeout: 10000 });
+		await expect(page.getByRole('tab', { name: 'Target Language Only' })).toBeVisible({ timeout: 10000 });
 
 		// Verify the system prompt includes the target language
 		const capturedRequest = getRequest();
@@ -955,7 +955,7 @@ test.describe('My Documents - Translation Variants', () => {
 		await expect(page.getByTestId('document-row')).toHaveCount(3);
 
 		// Click translated filter
-		await page.getByTestId('filter-translated').click();
+		await page.getByTestId('filter-translated').click({ force: true });
 
 		// Wait for filter to be applied (filter button should be active)
 		await expect(page.getByTestId('filter-translated')).toHaveClass(/bg-blue-100/);
@@ -967,5 +967,49 @@ test.describe('My Documents - Translation Variants', () => {
 		// Both should be visible
 		await expect(page.getByText('book-ja.md')).toBeVisible();
 		await expect(page.getByText('book-bilingual.md')).toBeVisible();
+	});
+});
+
+test.describe('Translation Results Tab Labels', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto('/');
+		await clearAllStorage(page);
+	});
+
+	test('translation results tabs have static labels: "Target Language Only" and "Bilingual"', async ({
+		page
+	}) => {
+		// Pre-populate IndexedDB with a markdown document
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_123',
+			name: 'test-book.md',
+			type: 'markdown',
+			content: '# Test Content',
+			size: 14,
+			uploadedAt: new Date().toISOString(),
+			phase: 'uploaded'
+		});
+
+		// Set API key and mock OpenAI
+		await setApiKey(page);
+		await mockOpenAICompletion(page, '# Translated', { jsonWrap: true });
+
+		await page.goto('/translate');
+
+		// Select the document, fill language, and click translate
+		await page.locator('select').first().selectOption('doc_md_123');
+		await page.getByTestId('target-language-input').fill('German');
+		const button = page.locator('button', { hasText: 'Start Translation' });
+		await expect(button).toBeEnabled({ timeout: 5000 });
+		await button.click({ force: true });
+
+		// Wait for results - should use static label "Target Language Only" NOT "German Only"
+		await expect(page.getByRole('tab', { name: 'Target Language Only' })).toBeVisible({
+			timeout: 10000
+		});
+		await expect(page.getByRole('tab', { name: 'Bilingual' })).toBeVisible();
+
+		// Verify "German Only" does NOT appear in tab labels
+		await expect(page.getByRole('tab', { name: /german only/i })).not.toBeVisible();
 	});
 });
