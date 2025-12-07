@@ -9,6 +9,7 @@ export function parseCliArgs(args) {
   let rectify = false;
   let pdfToMd = false;
   let contextAware = true;
+  let targetLanguage = undefined;
 
   for (let i = 0; i < cliArgs.length; i++) {
     const arg = cliArgs[i];
@@ -27,7 +28,9 @@ export function parseCliArgs(args) {
       pdfToMd = true;
     } else if (arg === '--no-context') {
       contextAware = false;
-    } else if (!arg.startsWith('--')) {
+    } else if (arg === '--to' || arg === '-t') {
+      targetLanguage = cliArgs[++i];
+    } else if (!arg.startsWith('--') && !arg.startsWith('-')) {
       inputFile = arg;
     }
   }
@@ -40,7 +43,19 @@ export function parseCliArgs(args) {
     throw new Error('Cannot use --rectify and --pdf-to-md flags together');
   }
 
-  return {
+  // Require target language for translation mode (not rectify or pdf-to-md)
+  const isTranslationMode = !rectify && !pdfToMd;
+  if (isTranslationMode && !targetLanguage) {
+    throw new Error(
+      'Target language is required. Use --to <language> to specify.\n' +
+      'Examples:\n' +
+      '  --to "Japanese"\n' +
+      '  --to "formal German"\n' +
+      '  --to "conversational Spanish"'
+    );
+  }
+
+  const result = {
     inputFile,
     outputDir,
     chunkSize,
@@ -50,4 +65,10 @@ export function parseCliArgs(args) {
     pdfToMd,
     contextAware
   };
+
+  if (targetLanguage) {
+    result.targetLanguage = targetLanguage;
+  }
+
+  return result;
 }

@@ -9,7 +9,7 @@ import { createRectifier } from './rectifier.js';
 import { createPdfConverter } from './pdfConverter.js';
 import { translateDocument } from './translationEngine.js';
 import { rectifyDocument } from './rectificationEngine.js';
-import { assembleJapaneseOnly, assembleBilingual, assembleRectified, assemblePdfToMarkdown } from './assembler.js';
+import { assembleJapaneseOnly, assembleBilingual, assembleRectified, assemblePdfToMarkdown, getLanguageCode } from './assembler.js';
 import { join, basename, extname } from 'path';
 
 async function main() {
@@ -91,6 +91,7 @@ async function main() {
       console.log('Translation Configuration:');
       console.log(`  Input file: ${options.inputFile}`);
       console.log(`  Output directory: ${options.outputDir}`);
+      console.log(`  Target language: ${options.targetLanguage}`);
       console.log(`  Chunk size: ${options.chunkSize}`);
       console.log(`  Model: ${options.model}`);
       console.log(`  Reasoning effort: ${options.reasoningEffort}`);
@@ -110,7 +111,8 @@ async function main() {
       const translator = createTranslator({
         model: options.model,
         reasoningEffort: options.reasoningEffort,
-        contextAware: options.contextAware
+        contextAware: options.contextAware,
+        targetLanguage: options.targetLanguage
       });
 
       console.log('Starting translation...');
@@ -136,12 +138,13 @@ async function main() {
       }));
 
       const fileBaseName = basename(options.inputFile, extname(options.inputFile));
-      const japaneseOutputPath = join(options.outputDir, `${fileBaseName}-japanese.md`);
+      const languageCode = getLanguageCode(options.targetLanguage);
+      const translatedOutputPath = join(options.outputDir, `${fileBaseName}-${languageCode}.md`);
       const bilingualOutputPath = join(options.outputDir, `${fileBaseName}-bilingual.md`);
 
-      console.log('Assembling Japanese-only output...');
-      assembleJapaneseOnly(transformedChunks, japaneseOutputPath);
-      console.log(`  Saved: ${japaneseOutputPath}`);
+      console.log(`Assembling ${options.targetLanguage} output...`);
+      assembleJapaneseOnly(transformedChunks, translatedOutputPath);
+      console.log(`  Saved: ${translatedOutputPath}`);
 
       console.log('Assembling bilingual output...');
       assembleBilingual(transformedChunks, bilingualOutputPath);

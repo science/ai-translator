@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach } from '@jest/globals';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { readFileSync, existsSync, mkdirSync, rmSync } from 'fs';
-import { assembleJapaneseOnly, assembleBilingual, assembleRectified, assemblePdfToMarkdown } from '../src/assembler.js';
+import { assembleJapaneseOnly, assembleBilingual, assembleRectified, assemblePdfToMarkdown, getLanguageCode } from '../src/assembler.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -354,6 +354,45 @@ describe('assembler', () => {
 
       expect(existsSync(outputPath)).toBe(true);
       expect(existsSync(nestedOutputDir)).toBe(true);
+    });
+  });
+
+  describe('getLanguageCode', () => {
+    test('should return language code for common languages', () => {
+      expect(getLanguageCode('Japanese')).toBe('ja');
+      expect(getLanguageCode('German')).toBe('de');
+      expect(getLanguageCode('French')).toBe('fr');
+      expect(getLanguageCode('Spanish')).toBe('es');
+      expect(getLanguageCode('Italian')).toBe('it');
+      expect(getLanguageCode('Portuguese')).toBe('pt');
+      expect(getLanguageCode('Chinese')).toBe('zh');
+      expect(getLanguageCode('Korean')).toBe('ko');
+      expect(getLanguageCode('Russian')).toBe('ru');
+      expect(getLanguageCode('Dutch')).toBe('nl');
+    });
+
+    test('should extract language from style-qualified descriptions', () => {
+      expect(getLanguageCode('business casual German')).toBe('de');
+      expect(getLanguageCode('formal French')).toBe('fr');
+      expect(getLanguageCode('conversational Spanish')).toBe('es');
+      expect(getLanguageCode('intimate, warm Japanese')).toBe('ja');
+    });
+
+    test('should be case insensitive', () => {
+      expect(getLanguageCode('japanese')).toBe('ja');
+      expect(getLanguageCode('GERMAN')).toBe('de');
+      expect(getLanguageCode('FrEnCh')).toBe('fr');
+    });
+
+    test('should return "translated" for unknown languages', () => {
+      expect(getLanguageCode('Klingon')).toBe('translated');
+      expect(getLanguageCode('Unknown Language')).toBe('translated');
+    });
+
+    test('should handle empty or undefined input', () => {
+      expect(getLanguageCode('')).toBe('translated');
+      expect(getLanguageCode(undefined)).toBe('translated');
+      expect(getLanguageCode(null)).toBe('translated');
     });
   });
 });

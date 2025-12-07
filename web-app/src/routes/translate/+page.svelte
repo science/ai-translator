@@ -16,6 +16,11 @@
 		resetProgress
 	} from '$lib/progress';
 	import ProgressIndicator from '$lib/components/ProgressIndicator.svelte';
+	import {
+		getLanguageHistory,
+		addLanguageToHistory
+	} from '$lib/languageHistory';
+	import { getLanguageCode, getLanguageName } from '$lib/languageCode';
 
 	// Browser services for direct OpenAI calls
 	import { chunkBySize } from '$lib/services/chunker';
@@ -39,11 +44,17 @@
 	let reasoningEffort = $state('medium');
 	let contextAware = $state(true);
 	let isTranslating = $state(false);
-	let japaneseOnlyMarkdown = $state('');
+	let translatedOnlyMarkdown = $state('');
 	let bilingualMarkdown = $state('');
-	let activeTab = $state<'japanese-only' | 'bilingual'>('japanese-only');
+	let activeTab = $state<'translated-only' | 'bilingual'>('translated-only');
 	let error = $state('');
 	let progress = $state<ProgressState>(resetProgress());
+
+	// Target language state
+	let targetLanguage = $state('');
+	let languageHistory = $state<string[]>([]);
+	let languageTouched = $state(false);
+	let showLanguageDropdown = $state(false);
 
 	onMount(async () => {
 		if (browser) {
@@ -53,6 +64,8 @@
 			if (storedContextAware !== null) {
 				contextAware = storedContextAware === 'true';
 			}
+			// Load language history
+			languageHistory = getLanguageHistory();
 		}
 	});
 
@@ -98,13 +111,31 @@
 	// Get the selected document info (not full document with content)
 	let selectedDocInfo = $derived(documents.find((doc) => doc.id === selectedDocId));
 
+	// Derived language display name for tabs
+	let displayLanguageName = $derived(getLanguageName(targetLanguage));
+
+	// Validation: language is required
+	let languageError = $derived(languageTouched && !targetLanguage.trim() ? 'Target language is required' : '');
+
+	// Can translate when document selected AND language filled
+	let canTranslate = $derived(!!selectedDocId && !!targetLanguage.trim());
+
 	/**
-	 * Assembles Japanese-only markdown from translated chunks
+	 * Assembles translated-only markdown from translated chunks
 	 */
-	function assembleJapaneseOnly(
+	function assembleTranslatedOnly(
 		chunks: Array<{ translatedContent: string }>
 	): string {
 		return chunks.map((chunk) => chunk.translatedContent).join('\n\n');
+	}
+
+	/**
+	 * Select a language from history
+	 */
+	function selectLanguageFromHistory(language: string) {
+		targetLanguage = language;
+		showLanguageDropdown = false;
+		languageTouched = true;
 	}
 
 	/**
@@ -121,11 +152,11 @@
 	}
 
 	async function handleTranslate() {
-		if (!selectedDocInfo) return;
+		if (!selectedDocInfo || !targetLanguage.trim()) return;
 
 		isTranslating = true;
 		error = '';
-		japaneseOnlyMarkdown = '';
+		translatedOnlyMarkdown = '';
 		bilingualMarkdown = '';
 		progress = createDeterminateProgress('Starting translation...');
 
@@ -164,7 +195,8 @@
 				apiKey,
 				model,
 				contextAware,
-				reasoningEffort: is5SeriesModel ? reasoningEffort : undefined
+				reasoningEffort: is5SeriesModel ? reasoningEffort : undefined,
+				targetLanguage: targetLanguage.trim()
 			});
 
 			// Step 3: Translate document with progress callback
@@ -185,7 +217,7 @@
 				message: 'Assembling results...'
 			});
 
-			japaneseOnlyMarkdown = assembleJapaneseOnly(translatedChunks);
+			translatedOnlyMarkdown = assembleTranslatedOnly(translatedChunks);
 			bilingualMarkdown = assembleBilingual(translatedChunks);
 
 			progress = completeProgress(
@@ -193,22 +225,27 @@
 				'Translation complete!'
 			);
 
+			// Add language to history
+			addLanguageToHistory(targetLanguage.trim());
+			languageHistory = getLanguageHistory();
+
 			// Store both translated documents in IndexedDB
 			const baseName = selectedDoc.name.replace(/\.md$/i, '');
+			const langCode = getLanguageCode(targetLanguage);
 
-			// Save Japanese-only version
-			const japaneseDoc: StoredDocument = {
+			// Save translated-only version
+			const translatedDoc: StoredDocument = {
 				id: generateDocumentId(),
-				name: `${baseName}-ja.md`,
+				name: `${baseName}-${langCode}.md`,
 				type: 'markdown',
-				content: japaneseOnlyMarkdown,
-				size: new Blob([japaneseOnlyMarkdown]).size,
+				content: translatedOnlyMarkdown,
+				size: new Blob([translatedOnlyMarkdown]).size,
 				uploadedAt: new Date().toISOString(),
 				phase: 'translated',
-				variant: 'japanese-only',
+				variant: 'translated-only',
 				sourceDocumentId: selectedDoc.id
 			};
-			await saveDocument(japaneseDoc);
+			await saveDocument(translatedDoc);
 
 			// Save bilingual version
 			const bilingualDoc: StoredDocument = {
@@ -228,11 +265,11 @@
 			documents = [
 				...documents,
 				{
-					id: japaneseDoc.id,
-					name: japaneseDoc.name,
-					type: japaneseDoc.type,
-					size: japaneseDoc.size,
-					uploadedAt: japaneseDoc.uploadedAt
+					id: translatedDoc.id,
+					name: translatedDoc.name,
+					type: translatedDoc.type,
+					size: translatedDoc.size,
+					uploadedAt: translatedDoc.uploadedAt
 				},
 				{
 					id: bilingualDoc.id,
@@ -292,6 +329,43 @@
 			</select>
 		</div>
 
+		<div class="relative">
+			<label class="block text-sm font-medium text-gray-700 mb-2">
+				Target Language: <span class="text-red-500">*</span>
+			</label>
+			<input
+				data-testid="target-language-input"
+				type="text"
+				bind:value={targetLanguage}
+				disabled={isTranslating}
+				placeholder='e.g., "Japanese", "formal German", "conversational Spanish"'
+				onfocus={() => { showLanguageDropdown = languageHistory.length > 0; }}
+				onblur={() => { languageTouched = true; setTimeout(() => showLanguageDropdown = false, 200); }}
+				class="block w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 {languageError ? 'border-red-500' : 'border-gray-300'}"
+			/>
+			{#if languageError}
+				<p class="mt-1 text-sm text-red-500">{languageError}</p>
+			{/if}
+			{#if showLanguageDropdown && languageHistory.length > 0}
+				<div
+					data-testid="language-history-dropdown"
+					class="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto"
+				>
+					<div class="px-3 py-2 text-xs font-medium text-gray-500 bg-gray-50 border-b">Recent:</div>
+					{#each languageHistory as historyItem}
+						<button
+							type="button"
+							data-testid="language-history-item"
+							onmousedown={(e) => { e.preventDefault(); selectLanguageFromHistory(historyItem); }}
+							class="w-full px-3 py-2 text-left text-sm hover:bg-blue-50 focus:bg-blue-50 focus:outline-none"
+						>
+							{historyItem}
+						</button>
+					{/each}
+				</div>
+			{/if}
+		</div>
+
 		<div class="grid grid-cols-2 gap-4">
 			<div>
 				<label class="block text-sm font-medium text-gray-700 mb-2">Model:</label>
@@ -336,7 +410,7 @@
 		<button
 			onclick={handleTranslate}
 			class="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-			disabled={!selectedDocId || isTranslating}
+			disabled={!canTranslate || isTranslating}
 		>
 			{#if isTranslating}
 				Translating...
@@ -354,7 +428,7 @@
 		</div>
 	{/if}
 
-	{#if japaneseOnlyMarkdown || bilingualMarkdown}
+	{#if translatedOnlyMarkdown || bilingualMarkdown}
 		<div class="mt-6 bg-white rounded-lg border border-gray-200 p-6">
 			<h2 class="text-lg font-semibold text-gray-900 mb-4">Translation Results</h2>
 
@@ -362,13 +436,13 @@
 			<div class="flex border-b border-gray-200 mb-4" role="tablist">
 				<button
 					role="tab"
-					aria-selected={activeTab === 'japanese-only'}
-					onclick={() => (activeTab = 'japanese-only')}
-					class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'japanese-only'
+					aria-selected={activeTab === 'translated-only'}
+					onclick={() => (activeTab = 'translated-only')}
+					class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeTab === 'translated-only'
 						? 'border-blue-600 text-blue-600'
 						: 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
 				>
-					Japanese Only
+					{displayLanguageName} Only
 				</button>
 				<button
 					role="tab"
@@ -384,11 +458,12 @@
 
 			<!-- Download Buttons -->
 			<div class="flex gap-2 mb-4">
-				{#if activeTab === 'japanese-only' && japaneseOnlyMarkdown}
+				{#if activeTab === 'translated-only' && translatedOnlyMarkdown}
 					{@const baseName = selectedDocInfo?.name.replace(/\.md$/i, '') || 'translation'}
+					{@const langCode = getLanguageCode(targetLanguage)}
 					<button
-						data-testid="download-md-japanese"
-						onclick={() => downloadMarkdown(japaneseOnlyMarkdown, `${baseName}-ja.md`)}
+						data-testid="download-md-translated"
+						onclick={() => downloadMarkdown(translatedOnlyMarkdown, `${baseName}-${langCode}.md`)}
 						class="px-3 py-1.5 text-sm bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors flex items-center gap-1.5"
 					>
 						<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -397,8 +472,8 @@
 						Download Markdown
 					</button>
 					<button
-						data-testid="download-docx-japanese"
-						onclick={() => downloadDocx(japaneseOnlyMarkdown, `${baseName}-ja.md`)}
+						data-testid="download-docx-translated"
+						onclick={() => downloadDocx(translatedOnlyMarkdown, `${baseName}-${langCode}.md`)}
 						class="px-3 py-1.5 text-sm bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg transition-colors flex items-center gap-1.5"
 					>
 						<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -433,8 +508,8 @@
 
 			<!-- Tab Content -->
 			<div class="prose prose-sm max-w-none bg-gray-50 rounded-lg p-4 overflow-auto max-h-96">
-				{#if activeTab === 'japanese-only'}
-					<pre class="whitespace-pre-wrap text-sm text-gray-800">{japaneseOnlyMarkdown}</pre>
+				{#if activeTab === 'translated-only'}
+					<pre class="whitespace-pre-wrap text-sm text-gray-800">{translatedOnlyMarkdown}</pre>
 				{:else}
 					<pre class="whitespace-pre-wrap text-sm text-gray-800">{bilingualMarkdown}</pre>
 				{/if}

@@ -4,14 +4,14 @@ import { parseCliArgs } from '../src/cli.js';
 describe('CLI', () => {
   describe('parseCliArgs', () => {
     test('should parse required input file path', () => {
-      const args = ['node', 'index.js', 'test.md'];
+      const args = ['node', 'index.js', 'test.md', '--to', 'Japanese'];
       const result = parseCliArgs(args);
 
       expect(result.inputFile).toBe('test.md');
     });
 
     test('should use default values for optional parameters', () => {
-      const args = ['node', 'index.js', 'test.md'];
+      const args = ['node', 'index.js', 'test.md', '--to', 'Japanese'];
       const result = parseCliArgs(args);
 
       expect(result.outputDir).toBe('output/');
@@ -20,21 +20,21 @@ describe('CLI', () => {
     });
 
     test('should parse output directory option', () => {
-      const args = ['node', 'index.js', 'test.md', '--output-dir', 'custom-output/'];
+      const args = ['node', 'index.js', 'test.md', '--to', 'Japanese', '--output-dir', 'custom-output/'];
       const result = parseCliArgs(args);
 
       expect(result.outputDir).toBe('custom-output/');
     });
 
     test('should parse chunk size option', () => {
-      const args = ['node', 'index.js', 'test.md', '--chunk-size', '2000'];
+      const args = ['node', 'index.js', 'test.md', '--to', 'Japanese', '--chunk-size', '2000'];
       const result = parseCliArgs(args);
 
       expect(result.chunkSize).toBe(2000);
     });
 
     test('should parse model option', () => {
-      const args = ['node', 'index.js', 'test.md', '--model', 'gpt-4'];
+      const args = ['node', 'index.js', 'test.md', '--to', 'Japanese', '--model', 'gpt-4'];
       const result = parseCliArgs(args);
 
       expect(result.model).toBe('gpt-4');
@@ -43,6 +43,7 @@ describe('CLI', () => {
     test('should parse all options together', () => {
       const args = [
         'node', 'index.js', 'my-book.md',
+        '--to', 'Japanese',
         '--output-dir', 'translations/',
         '--chunk-size', '3000',
         '--model', 'gpt-4-turbo'
@@ -66,6 +67,7 @@ describe('CLI', () => {
         'node', 'index.js',
         '--model', 'gpt-4',
         'book.md',
+        '--to', 'Japanese',
         '--chunk-size', '5000'
       ];
       const result = parseCliArgs(args);
@@ -83,7 +85,7 @@ describe('CLI', () => {
     });
 
     test('should default rectify to false', () => {
-      const args = ['node', 'index.js', 'test.md'];
+      const args = ['node', 'index.js', 'test.md', '--to', 'Japanese'];
       const result = parseCliArgs(args);
 
       expect(result.rectify).toBe(false);
@@ -112,7 +114,7 @@ describe('CLI', () => {
     });
 
     test('should default pdfToMd to false', () => {
-      const args = ['node', 'index.js', 'test.md'];
+      const args = ['node', 'index.js', 'test.md', '--to', 'Japanese'];
       const result = parseCliArgs(args);
 
       expect(result.pdfToMd).toBe(false);
@@ -138,14 +140,14 @@ describe('CLI', () => {
     });
 
     test('should parse --no-context flag to disable context-aware translation', () => {
-      const args = ['node', 'index.js', 'test.md', '--no-context'];
+      const args = ['node', 'index.js', 'test.md', '--to', 'Japanese', '--no-context'];
       const result = parseCliArgs(args);
 
       expect(result.contextAware).toBe(false);
     });
 
     test('should default contextAware to true', () => {
-      const args = ['node', 'index.js', 'test.md'];
+      const args = ['node', 'index.js', 'test.md', '--to', 'Japanese'];
       const result = parseCliArgs(args);
 
       expect(result.contextAware).toBe(true);
@@ -154,6 +156,7 @@ describe('CLI', () => {
     test('should parse --no-context flag with other options', () => {
       const args = [
         'node', 'index.js', 'book.md',
+        '--to', 'Japanese',
         '--no-context',
         '--output-dir', 'output/',
         '--model', 'gpt-4o'
@@ -163,6 +166,65 @@ describe('CLI', () => {
       expect(result.inputFile).toBe('book.md');
       expect(result.contextAware).toBe(false);
       expect(result.outputDir).toBe('output/');
+      expect(result.model).toBe('gpt-4o');
+    });
+
+    // Target language tests
+    test('should parse --to flag for target language', () => {
+      const args = ['node', 'index.js', 'test.md', '--to', 'German'];
+      const result = parseCliArgs(args);
+
+      expect(result.targetLanguage).toBe('German');
+    });
+
+    test('should accept -t as short form for target language', () => {
+      const args = ['node', 'index.js', 'test.md', '-t', 'French'];
+      const result = parseCliArgs(args);
+
+      expect(result.targetLanguage).toBe('French');
+    });
+
+    test('should handle target language with style description', () => {
+      const args = ['node', 'index.js', 'test.md', '--to', 'business casual German'];
+      const result = parseCliArgs(args);
+
+      expect(result.targetLanguage).toBe('business casual German');
+    });
+
+    test('should throw error when --to is missing in translation mode', () => {
+      const args = ['node', 'index.js', 'test.md'];
+
+      expect(() => parseCliArgs(args)).toThrow(/target language is required/i);
+    });
+
+    test('should not require --to for rectify mode', () => {
+      const args = ['node', 'index.js', 'test.md', '--rectify'];
+      const result = parseCliArgs(args);
+
+      expect(result.rectify).toBe(true);
+      expect(result.targetLanguage).toBeUndefined();
+    });
+
+    test('should not require --to for pdf-to-md mode', () => {
+      const args = ['node', 'index.js', 'test.pdf', '--pdf-to-md'];
+      const result = parseCliArgs(args);
+
+      expect(result.pdfToMd).toBe(true);
+      expect(result.targetLanguage).toBeUndefined();
+    });
+
+    test('should parse --to flag with other options', () => {
+      const args = [
+        'node', 'index.js', 'book.md',
+        '--to', 'Spanish',
+        '--output-dir', 'translations/',
+        '--model', 'gpt-4o'
+      ];
+      const result = parseCliArgs(args);
+
+      expect(result.inputFile).toBe('book.md');
+      expect(result.targetLanguage).toBe('Spanish');
+      expect(result.outputDir).toBe('translations/');
       expect(result.model).toBe('gpt-4o');
     });
   });

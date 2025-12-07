@@ -784,5 +784,57 @@ describe('translator', () => {
       // Should not have response_format
       expect(callArgs.response_format).toBeUndefined();
     });
+
+    test('should use targetLanguage option when set in createTranslator', async () => {
+      const germanTranslator = createTranslator({ targetLanguage: 'German' });
+      germanTranslator.client.chat.completions.create = mockCreate;
+
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: { content: '{"translation": "Hallo Welt"}' }
+        }]
+      });
+
+      await germanTranslator.translateChunk('Hello World', {});
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      const systemMessage = callArgs.messages.find(m => m.role === 'system');
+
+      expect(systemMessage.content).toContain('German');
+      expect(systemMessage.content).not.toContain('Japanese');
+    });
+
+    test('should use style-qualified targetLanguage in system prompt', async () => {
+      const formalGermanTranslator = createTranslator({ targetLanguage: 'business casual German' });
+      formalGermanTranslator.client.chat.completions.create = mockCreate;
+
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: { content: '{"translation": "Hallo Welt"}' }
+        }]
+      });
+
+      await formalGermanTranslator.translateChunk('Hello World', {});
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      const systemMessage = callArgs.messages.find(m => m.role === 'system');
+
+      expect(systemMessage.content).toContain('business casual German');
+    });
+
+    test('should default to Japanese when targetLanguage not specified', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: { content: '{"translation": "こんにちは"}' }
+        }]
+      });
+
+      await translator.translateChunk('Hello', {});
+
+      const callArgs = mockCreate.mock.calls[0][0];
+      const systemMessage = callArgs.messages.find(m => m.role === 'system');
+
+      expect(systemMessage.content).toContain('Japanese');
+    });
   });
 });
