@@ -166,12 +166,6 @@ npm test -- --testNamePattern="splits"     # Run tests matching pattern
 ```
 Runs Jest tests using experimental VM modules (required for ES modules).
 
-### Development Scripts
-```bash
-node scripts/inspectChunks.js
-```
-Processes test fixtures and outputs chunk analysis to JSON files for debugging.
-
 ## Web App
 
 A browser-based interface is available in `web-app/` built with SvelteKit 2, Svelte 5, and Tailwind CSS 4.
