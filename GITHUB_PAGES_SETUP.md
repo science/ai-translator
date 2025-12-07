@@ -17,13 +17,13 @@ The following have been configured automatically:
 Run these commands to push all changes:
 
 ```bash
-# Switch back to master and commit changes
-git checkout master
+# Switch back to main and commit changes
+git checkout main
 git add -A
 git commit -m "Add GitHub Pages deployment workflow and static adapter configuration"
 
-# Push master branch
-git push origin master
+# Push main branch
+git push origin main
 
 # Push production branch
 git checkout production
@@ -55,11 +55,11 @@ https://science.github.io/ai-translator/
 
 To deploy updates to GitHub Pages:
 
-1. Make changes on `master` branch
+1. Make changes on `main` branch
 2. Merge or rebase changes into `production` branch:
    ```bash
    git checkout production
-   git merge master
+   git merge main
    git push origin production
    ```
 3. GitHub Actions will automatically build and deploy
