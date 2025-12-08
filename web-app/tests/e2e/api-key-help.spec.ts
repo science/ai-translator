@@ -36,8 +36,8 @@ test.describe('API Key Help Page', () => {
 	test('includes link to OpenAI platform', async ({ page }) => {
 		await page.goto('/settings/api-key-help');
 
-		// Should have a link to OpenAI's platform
-		const openAILink = page.getByRole('link', { name: /openai|platform\.openai\.com/i });
+		// Should have a link to OpenAI's platform (signup link)
+		const openAILink = page.getByRole('link', { name: 'Visit platform.openai.com' });
 		await expect(openAILink).toBeVisible();
 
 		// Link should open in new tab

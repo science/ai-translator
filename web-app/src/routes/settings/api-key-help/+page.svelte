@@ -75,8 +75,38 @@
 				</div>
 
 				<div class="flex gap-4">
-					<div class="flex-shrink-0 w-8 h-8 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-bold">
+					<div class="flex-shrink-0 w-8 h-8 bg-green-100 text-green-700 rounded-full flex items-center justify-center font-bold">
 						3
+					</div>
+					<div>
+						<h3 class="font-medium text-gray-900 mb-1">Add a Payment Method & Purchase Credits</h3>
+						<p class="text-gray-600 mb-2">
+							<strong>Do this now:</strong> OpenAI uses prepaid billing, which means your API key
+							won't work until you've added a payment method and purchased credits. Without credits,
+							you'll get "insufficient quota" errors when trying to use the translation features.
+						</p>
+						<p class="text-gray-600 mb-3">
+							Go to your billing settings, click "Add payment method", and enter your credit or debit
+							card details. Then click "Add to credit balance" to purchase your initial credits
+							($5-10 is plenty to get started and test the app).
+						</p>
+						<a
+							href="https://platform.openai.com/settings/organization/billing/payment-methods"
+							target="_blank"
+							rel="noopener noreferrer"
+							class="inline-flex items-center gap-1 text-blue-600 hover:text-blue-700"
+						>
+							Go to Billing & Payment Methods
+							<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+								<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+							</svg>
+						</a>
+					</div>
+				</div>
+
+				<div class="flex gap-4">
+					<div class="flex-shrink-0 w-8 h-8 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-bold">
+						4
 					</div>
 					<div>
 						<h3 class="font-medium text-gray-900 mb-1">Navigate to API Keys</h3>
@@ -99,7 +129,7 @@
 
 				<div class="flex gap-4">
 					<div class="flex-shrink-0 w-8 h-8 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-bold">
-						4
+						5
 					</div>
 					<div>
 						<h3 class="font-medium text-gray-900 mb-1">Create a New API Key</h3>
@@ -112,7 +142,7 @@
 
 				<div class="flex gap-4">
 					<div class="flex-shrink-0 w-8 h-8 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-bold">
-						5
+						6
 					</div>
 					<div>
 						<h3 class="font-medium text-gray-900 mb-1">Copy Your Key Immediately</h3>
@@ -126,7 +156,7 @@
 
 				<div class="flex gap-4">
 					<div class="flex-shrink-0 w-8 h-8 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center font-bold">
-						6
+						7
 					</div>
 					<div>
 						<h3 class="font-medium text-gray-900 mb-1">Paste in Settings</h3>
@@ -143,15 +173,22 @@
 		<section class="bg-white rounded-lg border border-gray-200 p-6">
 			<h2 class="text-lg font-semibold text-gray-900 mb-3">About Costs and Billing</h2>
 			<p class="text-gray-600 mb-3">
-				Using OpenAI's API costs money based on how much you use it. New accounts often receive
-				free credits (around $5) to get started, which is enough for initial testing.
+				OpenAI uses <strong>prepaid billing</strong> for API access. This means you must purchase
+				credits before you can use the API. Your API requests will fail with "insufficient quota"
+				errors if you haven't added credits to your account.
 			</p>
 			<p class="text-gray-600 mb-3">
-				For ongoing use, you'll need to add a payment method to your OpenAI account. The cost
-				depends on how much text you translate. Translating a typical book might cost a few dollars.
+				The cost depends on how much text you translate. Translating a typical book chapter might
+				cost a few cents; an entire book might cost a few dollars. Starting with $5-10 in credits
+				is plenty to experiment and translate several documents.
+			</p>
+			<p class="text-gray-600 mb-3">
+				You can enable <strong>auto-recharge</strong> in your billing settings to automatically
+				add credits when your balance runs low, or manually add credits as needed.
 			</p>
 			<p class="text-gray-600">
-				You can set spending limits in your OpenAI account settings to prevent unexpected charges.
+				<strong>Tip:</strong> Set a monthly budget limit in your OpenAI account settings to prevent
+				unexpected charges. Purchased credits expire after 1 year.
 			</p>
 		</section>
 
@@ -211,10 +248,12 @@
 			<h2 class="text-lg font-semibold text-gray-900 mb-3">Troubleshooting</h2>
 			<div class="space-y-4">
 				<div>
-					<h3 class="font-medium text-gray-900">My key isn't working</h3>
+					<h3 class="font-medium text-gray-900">My key isn't working / "insufficient quota" error</h3>
 					<p class="text-gray-600 text-sm">
-						Make sure you copied the entire key including the "sk-" prefix. Also check that your
-						OpenAI account has billing set up if your free credits have been used.
+						Make sure you copied the entire key including the "sk-" prefix. Most commonly, this error
+						means you haven't added a payment method and purchased credits yet. Go to your
+						<a href="https://platform.openai.com/settings/organization/billing/overview" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-700">OpenAI billing page</a>
+						to add credits.
 					</p>
 				</div>
 				<div>
