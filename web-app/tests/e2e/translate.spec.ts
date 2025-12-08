@@ -970,6 +970,95 @@ test.describe('My Documents - Translation Variants', () => {
 	});
 });
 
+test.describe('Translate Page - Default Settings from Settings Tab', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto('/');
+		await clearAllStorage(page);
+	});
+
+	test('loads default model from Settings tab localStorage', async ({ page }) => {
+		// Set up custom default model in localStorage (as if saved from Settings tab)
+		await page.evaluate(() => {
+			localStorage.setItem('default_model', 'gpt-4.1');
+		});
+
+		await page.goto('/translate');
+		await page.waitForLoadState('networkidle');
+
+		// Model dropdown should show the saved default
+		const modelSelect = page.getByTestId('model-select');
+		await expect(modelSelect).toHaveValue('gpt-4.1');
+	});
+
+	test('loads default chunk size from Settings tab localStorage', async ({ page }) => {
+		// Set up custom default chunk size in localStorage
+		await page.evaluate(() => {
+			localStorage.setItem('default_chunk_size', '2500');
+		});
+
+		await page.goto('/translate');
+		await page.waitForLoadState('networkidle');
+
+		// Chunk size input should show the saved default
+		const chunkSizeInput = page.locator('input[type="number"]');
+		await expect(chunkSizeInput).toHaveValue('2500');
+	});
+
+	test('loads default reasoning effort from Settings tab localStorage', async ({ page }) => {
+		// Set up custom default reasoning effort in localStorage (with 5-series model)
+		await page.evaluate(() => {
+			localStorage.setItem('default_model', 'gpt-5-mini');
+			localStorage.setItem('default_reasoning_effort', 'high');
+		});
+
+		await page.goto('/translate');
+		await page.waitForLoadState('networkidle');
+
+		// Reasoning effort dropdown should show the saved default
+		const reasoningSelect = page.locator('select').filter({ hasText: /Low|Medium|High/ }).last();
+		await expect(reasoningSelect).toHaveValue('high');
+	});
+
+	test('OpenAI API call uses model from Settings tab default', async ({ page }) => {
+		// Pre-populate IndexedDB with a markdown document
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_123',
+			name: 'test-book.md',
+			type: 'markdown',
+			content: '# Test',
+			size: 6,
+			uploadedAt: new Date().toISOString(),
+			phase: 'uploaded'
+		});
+
+		// Set up default model in localStorage
+		await page.evaluate(() => {
+			localStorage.setItem('default_model', 'gpt-4.1');
+		});
+
+		// Set API key and mock OpenAI, capturing the request (jsonWrap for contextAware translation)
+		await setApiKey(page);
+		const getRequest = await mockOpenAICompletion(page, '# テスト', { jsonWrap: true });
+
+		await page.goto('/translate');
+		await page.waitForLoadState('networkidle');
+
+		// Select the document, fill language, and click translate
+		await page.locator('select').first().selectOption('doc_md_123');
+		await page.getByTestId('target-language-input').fill('Japanese');
+		const button = page.locator('button', { hasText: 'Start Translation' });
+		await expect(button).toBeEnabled({ timeout: 5000 });
+		await button.click({ force: true });
+
+		// Wait for result
+		await expect(page.getByRole('tab', { name: 'Target Language Only' })).toBeVisible({ timeout: 10000 });
+
+		// Verify the API call used the saved model
+		const capturedRequest = getRequest();
+		expect(capturedRequest?.model).toBe('gpt-4.1');
+	});
+});
+
 test.describe('Translation Results Tab Labels', () => {
 	test.beforeEach(async ({ page }) => {
 		await page.goto('/');
