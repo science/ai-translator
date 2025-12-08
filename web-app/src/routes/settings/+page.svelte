@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { browser } from '$app/environment';
+	import { base } from '$app/paths';
 	import { getDocumentsStorageUsed, clearAllDocuments as clearIndexedDBDocuments } from '$lib/storage';
 
 	// API Key state
@@ -120,7 +121,32 @@
 	<div class="space-y-6">
 		<!-- API Key Section -->
 		<div class="bg-white rounded-lg border border-gray-200 p-6">
-			<h2 class="text-lg font-semibold text-gray-900 mb-4">OpenAI API Configuration</h2>
+			<div class="flex items-center justify-between mb-4">
+				<h2 class="text-lg font-semibold text-gray-900">OpenAI API Configuration</h2>
+				<div class="relative">
+					<a
+						href="{base}/settings/api-key-help"
+						target="_blank"
+						rel="noopener noreferrer"
+						class="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700"
+					>
+						How to get an API key
+						<svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+						</svg>
+					</a>
+					{#if !apiKey.trim()}
+						<div
+							data-testid="getting-started-tooltip"
+							class="absolute right-0 top-full mt-2 w-64 p-3 bg-blue-600 text-white text-sm rounded-lg shadow-lg z-10"
+						>
+							<div class="absolute -top-2 right-4 w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent border-b-blue-600"></div>
+							<p class="font-medium mb-1">New here?</p>
+							<p>Start by reading this help page, then get your API key from OpenAI.</p>
+						</div>
+					{/if}
+				</div>
+			</div>
 
 			<div class="space-y-4">
 				<div>
