@@ -328,7 +328,7 @@
 
 		<div class="relative">
 			<label class="block text-sm font-medium text-gray-700 mb-2">
-				Target Language: <span class="text-red-500">*</span>
+				Target Language and Tone: <span class="text-red-500">*</span>
 			</label>
 			<input
 				data-testid="target-language-input"
