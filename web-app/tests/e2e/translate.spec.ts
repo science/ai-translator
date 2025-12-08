@@ -125,6 +125,9 @@ test.describe('Document Translation', () => {
 		const select = page.locator('select').first();
 		await select.selectOption('doc_md_123');
 
+		// Fill in target language (required)
+		await page.getByTestId('target-language-input').fill('Japanese');
+
 		// Button should now be enabled
 		const button = page.locator('button', { hasText: 'Start Translation' });
 		await expect(button).toBeEnabled();
@@ -148,13 +151,15 @@ test.describe('Document Translation', () => {
 
 		await page.goto('/translate');
 
-		// Select the document
+		// Select the document and fill language
 		const select = page.locator('select').first();
 		await select.selectOption('doc_md_123');
+		await page.getByTestId('target-language-input').fill('Japanese');
 
 		// Click translate
 		const button = page.locator('button', { hasText: 'Start Translation' });
-		await button.click();
+		await expect(button).toBeEnabled({ timeout: 5000 });
+		await button.click({ force: true });
 
 		// Should show loading state - button text changes to "Translating..."
 		await expect(page.getByText('Translating...')).toBeVisible({ timeout: 1000 });
@@ -180,12 +185,15 @@ test.describe('Document Translation', () => {
 
 		await page.goto('/translate');
 
-		// Select the document and click translate
+		// Select the document, fill language, and click translate
 		await page.locator('select').first().selectOption('doc_md_123');
-		await page.locator('button', { hasText: 'Start Translation' }).click();
+		await page.getByTestId('target-language-input').fill('Japanese');
+		const button = page.locator('button', { hasText: 'Start Translation' });
+		await expect(button).toBeEnabled({ timeout: 5000 });
+		await button.click({ force: true });
 
 		// Wait for result tabs to appear
-		await expect(page.getByRole('tab', { name: /japanese only/i })).toBeVisible({ timeout: 10000 });
+		await expect(page.getByRole('tab', { name: 'Target Language Only' })).toBeVisible({ timeout: 10000 });
 
 		// Verify the OpenAI API was called
 		const capturedRequest = getRequest();
@@ -214,12 +222,15 @@ test.describe('Document Translation', () => {
 
 		await page.goto('/translate');
 
-		// Select the document and click translate
+		// Select the document, fill language, and click translate
 		await page.locator('select').first().selectOption('doc_md_123');
-		await page.locator('button', { hasText: 'Start Translation' }).click();
+		await page.getByTestId('target-language-input').fill('Japanese');
+		const button = page.locator('button', { hasText: 'Start Translation' });
+		await expect(button).toBeEnabled({ timeout: 5000 });
+		await button.click({ force: true });
 
 		// Should display tabs for both translation types
-		await expect(page.getByRole('tab', { name: /japanese only/i })).toBeVisible({ timeout: 10000 });
+		await expect(page.getByRole('tab', { name: 'Target Language Only' })).toBeVisible({ timeout: 10000 });
 		await expect(page.getByRole('tab', { name: /bilingual/i })).toBeVisible();
 
 		// Japanese content should be visible
@@ -244,9 +255,12 @@ test.describe('Document Translation', () => {
 
 		await page.goto('/translate');
 
-		// Select the document and click translate
+		// Select the document, fill language, and click translate
 		await page.locator('select').first().selectOption('doc_md_123');
-		await page.locator('button', { hasText: 'Start Translation' }).click();
+		await page.getByTestId('target-language-input').fill('Japanese');
+		const button = page.locator('button', { hasText: 'Start Translation' });
+		await expect(button).toBeEnabled({ timeout: 5000 });
+		await button.click({ force: true });
 
 		// Wait for translation to complete (button returns to normal state)
 		await expect(page.locator('button', { hasText: 'Start Translation' })).toBeEnabled({
@@ -256,7 +270,7 @@ test.describe('Document Translation', () => {
 		// Check IndexedDB for the new documents
 		const docs = await getAllDocumentsFromIndexedDB(page);
 
-		// Should have 3 documents now: original + japanese-only + bilingual
+		// Should have 3 documents now: original + translated-only + bilingual
 		expect(docs.length).toBe(3);
 
 		const japaneseDoc = docs.find((d) => d.name.includes('-ja.md'));
@@ -264,7 +278,7 @@ test.describe('Document Translation', () => {
 		expect(japaneseDoc!.name).toBe('test-book-ja.md');
 		expect(japaneseDoc!.content).toBe('# テスト');
 		expect(japaneseDoc!.phase).toBe('translated');
-		expect(japaneseDoc!.variant).toBe('japanese-only');
+		expect(japaneseDoc!.variant).toBe('translated-only');
 		expect(japaneseDoc!.sourceDocumentId).toBe('doc_md_123');
 
 		const bilingualDoc = docs.find((d) => d.name.includes('-bilingual.md'));
@@ -296,9 +310,12 @@ test.describe('Document Translation', () => {
 
 		await page.goto('/translate');
 
-		// Select the document and click translate
+		// Select the document, fill language, and click translate
 		await page.locator('select').first().selectOption('doc_md_123');
-		await page.locator('button', { hasText: 'Start Translation' }).click();
+		await page.getByTestId('target-language-input').fill('Japanese');
+		const button = page.locator('button', { hasText: 'Start Translation' });
+		await expect(button).toBeEnabled({ timeout: 5000 });
+		await button.click({ force: true });
 
 		// Should display error message (error text from browser service)
 		await expect(page.getByText(/invalid api key|error|failed/i)).toBeVisible({ timeout: 10000 });
@@ -322,10 +339,12 @@ test.describe('Document Translation', () => {
 
 		await page.goto('/translate');
 
-		// Select the document and click translate
+		// Select the document, fill language, and click translate
 		await page.locator('select').first().selectOption('doc_md_123');
+		await page.getByTestId('target-language-input').fill('Japanese');
 		const button = page.locator('button', { hasText: 'Start Translation' });
-		await button.click();
+		await expect(button).toBeEnabled({ timeout: 5000 });
+		await button.click({ force: true });
 
 		// Button should return to normal state after translation
 		await expect(button).toBeEnabled({ timeout: 10000 });
@@ -350,18 +369,21 @@ test.describe('Document Translation', () => {
 
 		await page.goto('/translate');
 
-		// Select the document and click translate
+		// Select the document, fill language, and click translate
 		await page.locator('select').first().selectOption('doc_md_123');
-		await page.locator('button', { hasText: 'Start Translation' }).click();
+		await page.getByTestId('target-language-input').fill('Japanese');
+		const button = page.locator('button', { hasText: 'Start Translation' });
+		await expect(button).toBeEnabled({ timeout: 5000 });
+		await button.click({ force: true });
 
 		// Wait for results
-		await expect(page.getByRole('tab', { name: /japanese only/i })).toBeVisible({ timeout: 10000 });
+		await expect(page.getByRole('tab', { name: 'Target Language Only' })).toBeVisible({ timeout: 10000 });
 
-		// Japanese only tab should be active by default and show Japanese content
+		// Target Language Only tab should be active by default and show translated content
 		await expect(page.getByText('日本語だけ')).toBeVisible();
 
 		// Click bilingual tab
-		await page.getByRole('tab', { name: /bilingual/i }).click();
+		await page.getByRole('tab', { name: /bilingual/i }).click({ force: true });
 
 		// Should now show bilingual content with English
 		await expect(page.getByText('English Only')).toBeVisible();
@@ -428,8 +450,7 @@ test.describe('Model Selection', () => {
 		const modelSelect = page.getByTestId('model-select');
 		await expect(modelSelect).toHaveValue('gpt-5-mini'); // Verify initial value
 
-		// Click and select to ensure proper interaction
-		await modelSelect.click();
+		// Select gpt-4.1
 		await modelSelect.selectOption('gpt-4.1');
 
 		// Wait for selection to complete
@@ -452,8 +473,7 @@ test.describe('Model Selection', () => {
 		const modelSelect = page.getByTestId('model-select');
 		await expect(modelSelect).toHaveValue('gpt-5-mini'); // Verify initial value
 
-		// Click and select to ensure proper interaction
-		await modelSelect.click();
+		// Select gpt-4.1-mini
 		await modelSelect.selectOption('gpt-4.1-mini');
 
 		// Wait for selection to complete
@@ -544,18 +564,20 @@ test.describe('Model Selection', () => {
 
 		// Select gpt-5.1 model
 		const modelSelect = page.getByTestId('model-select');
-		await modelSelect.click();
 		await modelSelect.selectOption('gpt-5.1');
 		await expect(modelSelect).toHaveValue('gpt-5.1');
 
-		// Select the document
+		// Select the document and fill language
 		await page.locator('select').first().selectOption('doc_md_123');
+		await page.getByTestId('target-language-input').fill('Japanese');
 
 		// Click translate
-		await page.locator('button', { hasText: 'Start Translation' }).click();
+		const button = page.locator('button', { hasText: 'Start Translation' });
+		await expect(button).toBeEnabled({ timeout: 5000 });
+		await button.click({ force: true });
 
 		// Wait for result
-		await expect(page.getByRole('tab', { name: /japanese only/i })).toBeVisible({ timeout: 10000 });
+		await expect(page.getByRole('tab', { name: 'Target Language Only' })).toBeVisible({ timeout: 10000 });
 
 		// Verify the OpenAI API was called with reasoning_effort
 		const capturedRequest = getRequest();
@@ -588,23 +610,274 @@ test.describe('Model Selection', () => {
 
 		// Select gpt-4.1 model (non-5 series)
 		const modelSelect = page.getByTestId('model-select');
-		await modelSelect.click();
 		await modelSelect.selectOption('gpt-4.1');
 		await expect(modelSelect).toHaveValue('gpt-4.1');
 
-		// Select the document
+		// Select the document and fill language
 		await page.locator('select').first().selectOption('doc_md_123');
+		await page.getByTestId('target-language-input').fill('Japanese');
 
 		// Click translate
-		await page.locator('button', { hasText: 'Start Translation' }).click();
+		const button = page.locator('button', { hasText: 'Start Translation' });
+		await expect(button).toBeEnabled({ timeout: 5000 });
+		await button.click({ force: true });
 
 		// Wait for result
-		await expect(page.getByRole('tab', { name: /japanese only/i })).toBeVisible({ timeout: 10000 });
+		await expect(page.getByRole('tab', { name: 'Target Language Only' })).toBeVisible({ timeout: 10000 });
 
 		// Verify the OpenAI API was called WITHOUT reasoning_effort
 		const capturedRequest = getRequest();
 		expect(capturedRequest?.model).toBe('gpt-4.1');
 		expect(capturedRequest?.reasoning_effort).toBeUndefined();
+	});
+});
+
+test.describe('Target Language Input', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto('/');
+		await clearAllStorage(page);
+	});
+
+	test('shows target language input field', async ({ page }) => {
+		await page.goto('/translate');
+
+		const languageInput = page.getByTestId('target-language-input');
+		await expect(languageInput).toBeVisible();
+	});
+
+	test('translate button is disabled when language is empty', async ({ page }) => {
+		// Pre-populate IndexedDB with a markdown document
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_123',
+			name: 'test-book.md',
+			type: 'markdown',
+			content: '# Test Book',
+			size: 11,
+			uploadedAt: new Date().toISOString(),
+			phase: 'uploaded'
+		});
+
+		await page.goto('/translate');
+
+		// Select a document
+		const select = page.locator('select').first();
+		await select.selectOption('doc_md_123');
+
+		// Language input should be empty
+		const languageInput = page.getByTestId('target-language-input');
+		await expect(languageInput).toHaveValue('');
+
+		// Button should be disabled
+		const button = page.locator('button', { hasText: 'Start Translation' });
+		await expect(button).toBeDisabled();
+	});
+
+	test('translate button is enabled when language is filled', async ({ page }) => {
+		// Pre-populate IndexedDB with a markdown document
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_123',
+			name: 'test-book.md',
+			type: 'markdown',
+			content: '# Test Book',
+			size: 11,
+			uploadedAt: new Date().toISOString(),
+			phase: 'uploaded'
+		});
+
+		await page.goto('/translate');
+
+		// Select a document
+		const select = page.locator('select').first();
+		await select.selectOption('doc_md_123');
+
+		// Fill in target language
+		const languageInput = page.getByTestId('target-language-input');
+		await languageInput.fill('German');
+
+		// Button should now be enabled
+		const button = page.locator('button', { hasText: 'Start Translation' });
+		await expect(button).toBeEnabled();
+	});
+
+	test('shows validation message when language is empty and field touched', async ({ page }) => {
+		await page.goto('/translate');
+
+		// Focus and blur the language input without entering a value
+		const languageInput = page.getByTestId('target-language-input');
+		await languageInput.focus();
+		await languageInput.blur();
+
+		// Should show validation message
+		await expect(page.getByText(/target language.*required/i)).toBeVisible();
+	});
+
+	test('shows language history dropdown when input has history', async ({ page }) => {
+		// Set up some language history in localStorage
+		await page.goto('/translate');
+		await page.evaluate(() => {
+			localStorage.setItem(
+				'translation-language-history',
+				JSON.stringify(['Japanese', 'business casual German', 'formal French'])
+			);
+		});
+
+		// Reload to pick up localStorage
+		await page.goto('/translate');
+
+		// Focus on language input to show dropdown
+		const languageInput = page.getByTestId('target-language-input');
+		await languageInput.focus();
+
+		// Should show history items
+		await expect(page.getByTestId('language-history-dropdown')).toBeVisible();
+		await expect(page.getByText('Japanese')).toBeVisible();
+		await expect(page.getByText('business casual German')).toBeVisible();
+	});
+
+	test('selecting from history populates input', async ({ page }) => {
+		// Set up language history
+		await page.goto('/translate');
+		await page.evaluate(() => {
+			localStorage.setItem(
+				'translation-language-history',
+				JSON.stringify(['Japanese', 'German'])
+			);
+		});
+
+		await page.goto('/translate');
+
+		// Focus input to show dropdown
+		const languageInput = page.getByTestId('target-language-input');
+		await languageInput.focus();
+
+		// Wait for dropdown to be visible
+		await expect(page.getByTestId('language-history-dropdown')).toBeVisible();
+
+		// Click the German history item
+		const germanItem = page.getByTestId('language-history-item').filter({ hasText: 'German' });
+		await expect(germanItem).toBeVisible();
+		await germanItem.click({ force: true });
+
+		// Input should now have the selected value
+		await expect(languageInput).toHaveValue('German');
+	});
+
+	test('stores language to history after successful translation', async ({ page }) => {
+		// Pre-populate IndexedDB with a markdown document
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_123',
+			name: 'test-book.md',
+			type: 'markdown',
+			content: '# Test',
+			size: 6,
+			uploadedAt: new Date().toISOString(),
+			phase: 'uploaded'
+		});
+
+		// Set API key and mock OpenAI (jsonWrap for contextAware translation)
+		await setApiKey(page);
+		await mockOpenAICompletion(page, '# Test auf Deutsch', { jsonWrap: true });
+
+		await page.goto('/translate');
+
+		// Select document and fill language
+		await page.locator('select').first().selectOption('doc_md_123');
+		const languageInput = page.getByTestId('target-language-input');
+		await languageInput.fill('German');
+
+		// Wait for button to be enabled, then click
+		const translateButton = page.locator('button', { hasText: 'Start Translation' });
+		await expect(translateButton).toBeEnabled({ timeout: 5000 });
+		await translateButton.click({ force: true });
+
+		// Wait for translation to complete (button returns to enabled after completion)
+		await expect(page.getByRole('tab', { name: 'Target Language Only' })).toBeVisible({ timeout: 10000 });
+
+		// Check localStorage for the language history
+		const history = await page.evaluate(() => {
+			return JSON.parse(localStorage.getItem('translation-language-history') || '[]');
+		});
+
+		expect(history).toContain('German');
+	});
+
+	test('translated document uses language code in filename', async ({ page }) => {
+		// Pre-populate IndexedDB with a markdown document
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_123',
+			name: 'test-book.md',
+			type: 'markdown',
+			content: '# Test',
+			size: 6,
+			uploadedAt: new Date().toISOString(),
+			phase: 'uploaded'
+		});
+
+		// Set API key and mock OpenAI (jsonWrap for contextAware translation)
+		await setApiKey(page);
+		await mockOpenAICompletion(page, '# Test auf Deutsch', { jsonWrap: true });
+
+		await page.goto('/translate');
+
+		// Select document and fill language
+		await page.locator('select').first().selectOption('doc_md_123');
+		const languageInput = page.getByTestId('target-language-input');
+		await languageInput.fill('German');
+
+		// Wait for button to be enabled, then click
+		const translateButton = page.locator('button', { hasText: 'Start Translation' });
+		await expect(translateButton).toBeEnabled({ timeout: 5000 });
+		await translateButton.click({ force: true });
+
+		// Wait for translation to complete
+		await expect(page.getByRole('tab', { name: 'Target Language Only' })).toBeVisible({ timeout: 10000 });
+
+		// Check IndexedDB for the new documents
+		const docs = await getAllDocumentsFromIndexedDB(page);
+
+		// Should have a document with -de.md suffix
+		const germanDoc = docs.find((d) => d.name.includes('-de.md'));
+		expect(germanDoc).toBeDefined();
+		expect(germanDoc!.name).toBe('test-book-de.md');
+	});
+
+	test('passes target language to translator API', async ({ page }) => {
+		const markdownContent = '# Test';
+
+		// Pre-populate IndexedDB with a markdown document
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_123',
+			name: 'test-book.md',
+			type: 'markdown',
+			content: markdownContent,
+			size: markdownContent.length,
+			uploadedAt: new Date().toISOString(),
+			phase: 'uploaded'
+		});
+
+		// Set API key and mock OpenAI, capturing the request (jsonWrap for contextAware translation)
+		await setApiKey(page);
+		const getRequest = await mockOpenAICompletion(page, '# Test auf Deutsch', { jsonWrap: true });
+
+		await page.goto('/translate');
+
+		// Select document and fill language
+		await page.locator('select').first().selectOption('doc_md_123');
+		const languageInput = page.getByTestId('target-language-input');
+		await languageInput.fill('German');
+
+		// Wait for button to be enabled, then click
+		const translateButton = page.locator('button', { hasText: 'Start Translation' });
+		await expect(translateButton).toBeEnabled({ timeout: 5000 });
+		await translateButton.click({ force: true });
+
+		// Wait for result
+		await expect(page.getByRole('tab', { name: 'Target Language Only' })).toBeVisible({ timeout: 10000 });
+
+		// Verify the system prompt includes the target language
+		const capturedRequest = getRequest();
+		const systemMessage = capturedRequest?.messages?.find((m) => m.role === 'system');
+		expect(systemMessage?.content).toContain('German');
 	});
 });
 
@@ -682,7 +955,7 @@ test.describe('My Documents - Translation Variants', () => {
 		await expect(page.getByTestId('document-row')).toHaveCount(3);
 
 		// Click translated filter
-		await page.getByTestId('filter-translated').click();
+		await page.getByTestId('filter-translated').click({ force: true });
 
 		// Wait for filter to be applied (filter button should be active)
 		await expect(page.getByTestId('filter-translated')).toHaveClass(/bg-blue-100/);
@@ -694,5 +967,49 @@ test.describe('My Documents - Translation Variants', () => {
 		// Both should be visible
 		await expect(page.getByText('book-ja.md')).toBeVisible();
 		await expect(page.getByText('book-bilingual.md')).toBeVisible();
+	});
+});
+
+test.describe('Translation Results Tab Labels', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto('/');
+		await clearAllStorage(page);
+	});
+
+	test('translation results tabs have static labels: "Target Language Only" and "Bilingual"', async ({
+		page
+	}) => {
+		// Pre-populate IndexedDB with a markdown document
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_123',
+			name: 'test-book.md',
+			type: 'markdown',
+			content: '# Test Content',
+			size: 14,
+			uploadedAt: new Date().toISOString(),
+			phase: 'uploaded'
+		});
+
+		// Set API key and mock OpenAI
+		await setApiKey(page);
+		await mockOpenAICompletion(page, '# Translated', { jsonWrap: true });
+
+		await page.goto('/translate');
+
+		// Select the document, fill language, and click translate
+		await page.locator('select').first().selectOption('doc_md_123');
+		await page.getByTestId('target-language-input').fill('German');
+		const button = page.locator('button', { hasText: 'Start Translation' });
+		await expect(button).toBeEnabled({ timeout: 5000 });
+		await button.click({ force: true });
+
+		// Wait for results - should use static label "Target Language Only" NOT "German Only"
+		await expect(page.getByRole('tab', { name: 'Target Language Only' })).toBeVisible({
+			timeout: 10000
+		});
+		await expect(page.getByRole('tab', { name: 'Bilingual' })).toBeVisible();
+
+		// Verify "German Only" does NOT appear in tab labels
+		await expect(page.getByRole('tab', { name: /german only/i })).not.toBeVisible();
 	});
 });

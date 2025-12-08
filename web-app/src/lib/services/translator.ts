@@ -16,6 +16,7 @@ export interface TranslatorOptions {
 	verbosity?: string;
 	reasoningEffort?: string;
 	maxRetries?: number;
+	targetLanguage?: string;
 }
 
 export interface Translator {
@@ -58,6 +59,7 @@ export function createTranslator(options: TranslatorOptions): Translator {
 	const model = options.model || 'gpt-4o';
 	const contextAware = options.contextAware !== false; // Default to true
 	const verbosity = options.verbosity || 'low';
+	const defaultTargetLanguage = options.targetLanguage || 'Japanese';
 
 	// Helper to check if model is GPT-5.1 family (supports "none", not "minimal")
 	function isGpt51Model(modelName: string): boolean {
@@ -88,11 +90,12 @@ export function createTranslator(options: TranslatorOptions): Translator {
 	async function translateChunk(
 		chunk: string,
 		context: TranslationContext = {},
-		targetLanguage: string = 'Japanese'
+		targetLanguage?: string
 	): Promise<string> {
+		const language = targetLanguage || defaultTargetLanguage;
 		const systemPrompt = contextAware
-			? getContextAwareSystemPrompt(targetLanguage)
-			: getLegacySystemPrompt(targetLanguage);
+			? getContextAwareSystemPrompt(language)
+			: getLegacySystemPrompt(language);
 
 		const userContent = contextAware ? buildContextMessage(chunk, context) : chunk;
 

@@ -19,7 +19,7 @@ test.describe('One Step Translation Page', () => {
 		await expect(page.getByText('Translation Settings')).toBeVisible();
 
 		// Check start button exists
-		await expect(page.getByRole('button', { name: /start complete workflow/i })).toBeVisible();
+		await expect(page.getByRole('button', { name: /start one step translation/i })).toBeVisible();
 	});
 
 	test('navigation shows workflow link with separator', async ({ page }) => {
@@ -45,7 +45,7 @@ test.describe('One Step Translation Page', () => {
 	test('start button is disabled when no file is selected', async ({ page }) => {
 		await page.goto('/workflow');
 
-		const startButton = page.getByRole('button', { name: /start complete workflow/i });
+		const startButton = page.getByRole('button', { name: /start one step translation/i });
 		await expect(startButton).toBeDisabled();
 	});
 
@@ -193,7 +193,7 @@ test.describe('Workflow UI States', () => {
 		// For now, we just verify the initial state
 		await page.goto('/workflow');
 
-		const startButton = page.getByRole('button', { name: /start complete workflow/i });
+		const startButton = page.getByRole('button', { name: /start one step translation/i });
 
 		// Button text should be "Start One Step Translation" initially
 		await expect(startButton).toContainText('Start One Step Translation');
@@ -203,7 +203,7 @@ test.describe('Workflow UI States', () => {
 		await page.goto('/workflow');
 
 		// Check that the start button contains an SVG icon
-		const startButton = page.getByRole('button', { name: /start complete workflow/i });
+		const startButton = page.getByRole('button', { name: /start one step translation/i });
 		const icon = startButton.locator('svg');
 		await expect(icon).toBeVisible();
 	});
@@ -211,13 +211,62 @@ test.describe('Workflow UI States', () => {
 	test('step numbers are displayed for each section', async ({ page }) => {
 		await page.goto('/workflow');
 
-		// Check step number badges (1, 2, 3) - use specific class to find the rounded badges
+		// Check step number badges (1, 2, 3, 4) - use specific class to find the rounded badges
 		const stepBadges = page.locator('.rounded-full.bg-blue-100');
-		await expect(stepBadges).toHaveCount(3);
+		await expect(stepBadges).toHaveCount(4);
 
 		// Verify the badges contain the step numbers
 		await expect(stepBadges.nth(0)).toContainText('1');
 		await expect(stepBadges.nth(1)).toContainText('2');
 		await expect(stepBadges.nth(2)).toContainText('3');
+		await expect(stepBadges.nth(3)).toContainText('4');
+	});
+});
+
+test.describe('Target Language and Tone Input', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto('/');
+		await clearAllStorage(page);
+	});
+
+	test('shows target language and tone input field with correct label', async ({ page }) => {
+		await page.goto('/workflow');
+
+		// Check for the "Target language and tone" section heading
+		await expect(page.getByRole('heading', { name: 'Target language and tone' })).toBeVisible();
+
+		// Check for the input field
+		const input = page.getByTestId('target-language-input');
+		await expect(input).toBeVisible();
+	});
+
+	test('start button is disabled when target language is empty', async ({ page }) => {
+		await page.goto('/workflow');
+
+		// Even with a file, button should be disabled without language
+		const startButton = page.getByRole('button', { name: /start one step translation/i });
+		await expect(startButton).toBeDisabled();
+	});
+
+	test('shows language history dropdown when input has history', async ({ page }) => {
+		// Pre-populate language history
+		await page.goto('/workflow');
+		await page.evaluate(() => {
+			localStorage.setItem('translation-language-history', JSON.stringify(['Spanish', 'German']));
+		});
+
+		await page.reload();
+
+		// Focus the input
+		const input = page.getByTestId('target-language-input');
+		await input.focus();
+
+		// History dropdown should appear
+		await expect(page.getByTestId('language-history-dropdown')).toBeVisible();
+
+		// History items should be visible (using buttons in the dropdown)
+		const dropdown = page.getByTestId('language-history-dropdown');
+		await expect(dropdown.getByRole('button', { name: 'Spanish' })).toBeVisible();
+		await expect(dropdown.getByRole('button', { name: 'German' })).toBeVisible();
 	});
 });

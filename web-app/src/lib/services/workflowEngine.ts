@@ -165,7 +165,8 @@ export async function runWorkflow(options: WorkflowOptions): Promise<WorkflowRes
 			apiKey,
 			model: translationSettings.model,
 			contextAware: translationSettings.contextAware,
-			reasoningEffort: translationSettings.reasoningEffort
+			reasoningEffort: translationSettings.reasoningEffort,
+			targetLanguage: translationSettings.targetLanguage
 		});
 
 		// Run translation with progress tracking

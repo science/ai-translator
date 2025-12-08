@@ -33,6 +33,7 @@ export function createTranslator(options = {}) {
   const model = options.model || 'gpt-4o';
   const verbosity = options.verbosity || 'low';
   const contextAware = options.contextAware !== false; // Default to true
+  const defaultTargetLanguage = options.targetLanguage || 'Japanese';
 
   // Helper to check if model is GPT-5.1 family (supports "none", not "minimal")
   function isGpt51Model(modelName) {
@@ -182,10 +183,11 @@ CRITICAL: Complete Translation Required:
     }
   };
 
-  async function translateChunk(chunk, contextOrLanguage = {}, targetLanguage = 'Japanese') {
+  async function translateChunk(chunk, contextOrLanguage = {}, targetLanguage = null) {
     // Handle backward compatibility: second argument can be context object or target language string
     let context = {};
-    let language = targetLanguage;
+    // Use the language passed as argument, or fall back to the default configured at creation
+    let language = targetLanguage || defaultTargetLanguage;
 
     if (typeof contextOrLanguage === 'string') {
       // Legacy call: translateChunk(chunk, 'Spanish')

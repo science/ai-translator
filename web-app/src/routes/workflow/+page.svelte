@@ -32,6 +32,8 @@
 	} from '$lib/workflow';
 	import { runWorkflow, type WorkflowResult } from '$lib/services/workflowEngine';
 	import { exportMarkdownAsDocx } from '$lib/services/docxExporter';
+	import { getLanguageHistory, addLanguageToHistory } from '$lib/languageHistory';
+	import { getLanguageCode } from '$lib/languageCode';
 
 	// State
 	let workflowState = $state<WorkflowState>(createWorkflowState());
@@ -40,7 +42,7 @@
 	let error = $state('');
 	let currentProgress = $state<ProgressState>(resetProgress());
 	let workflowResult = $state<WorkflowResult | null>(null);
-	let activeResultTab = $state<'japanese-only' | 'bilingual'>('japanese-only');
+	let activeResultTab = $state<'translated-only' | 'bilingual'>('translated-only');
 
 	// Settings state (bound to form inputs)
 	let cleanupModel = $state('gpt-5-mini');
@@ -51,8 +53,14 @@
 	let translationReasoningEffort = $state('medium');
 	let translationContextAware = $state(true);
 
-	// Derived state
-	let canStartWorkflow = $derived(selectedFile !== null && !workflowState.isRunning);
+	// Target language state
+	let targetLanguage = $state('');
+	let languageHistory = $state<string[]>([]);
+	let languageTouched = $state(false);
+	let showLanguageDropdown = $state(false);
+
+	// Derived state - now requires target language
+	let canStartWorkflow = $derived(selectedFile !== null && !workflowState.isRunning && !!targetLanguage.trim());
 	let showProgress = $derived(workflowState.isRunning || isWorkflowComplete(workflowState));
 	let showResults = $derived(isWorkflowComplete(workflowState) && workflowResult !== null);
 
@@ -108,8 +116,17 @@
 			if (savedContextAware !== null) {
 				translationContextAware = savedContextAware === 'true';
 			}
+
+			// Load language history
+			languageHistory = getLanguageHistory();
 		}
 	});
+
+	function selectLanguageFromHistory(lang: string) {
+		targetLanguage = lang;
+		showLanguageDropdown = false;
+		languageTouched = true;
+	}
 
 	function handleDragOver(e: DragEvent) {
 		e.preventDefault();
@@ -174,7 +191,8 @@
 			model: translationModel,
 			chunkSize: translationChunkSize,
 			reasoningEffort: translationReasoningEffort,
-			contextAware: translationContextAware
+			contextAware: translationContextAware,
+			targetLanguage
 		};
 
 		try {
@@ -247,8 +265,13 @@
 
 			workflowResult = result;
 
+			// Save language to history
+			addLanguageToHistory(targetLanguage);
+			languageHistory = getLanguageHistory();
+
 			// Save all output documents
 			const baseName = selectedFile.name.replace(/\.pdf$/i, '');
+			const langCode = getLanguageCode(targetLanguage);
 
 			// Save converted markdown
 			const convertedDoc: StoredDocument = {
@@ -275,19 +298,19 @@
 			};
 			await saveDocument(cleanedDoc);
 
-			// Save Japanese-only translation
-			const japaneseDoc: StoredDocument = {
+			// Save translated-only version
+			const translatedDoc: StoredDocument = {
 				id: generateDocumentId(),
-				name: `${baseName}-ja.md`,
+				name: `${baseName}-${langCode}.md`,
 				type: 'markdown',
 				content: result.japaneseOnly,
 				size: new Blob([result.japaneseOnly]).size,
 				uploadedAt: new Date().toISOString(),
 				phase: 'translated',
-				variant: 'japanese-only',
+				variant: 'translated-only',
 				sourceDocumentId: cleanedDoc.id
 			};
-			await saveDocument(japaneseDoc);
+			await saveDocument(translatedDoc);
 
 			// Save bilingual translation
 			const bilingualDoc: StoredDocument = {
@@ -335,7 +358,7 @@
 
 <div class="max-w-4xl">
 	<h1 class="text-2xl font-bold text-gray-900 mb-2">One Step Translation</h1>
-	<p class="text-gray-600 mb-6">Convert PDF to Japanese in one automated process</p>
+	<p class="text-gray-600 mb-6">Convert PDF to your target language in one automated process</p>
 
 	{#if !showResults}
 		<!-- Step 1: Upload PDF -->
@@ -432,10 +455,58 @@
 			</div>
 		</div>
 
-		<!-- Step 3: Translation Settings -->
+		<!-- Step 3: Target Language and Tone -->
 		<div class="bg-white rounded-lg border border-gray-200 p-6 mb-6">
 			<h2 class="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
 				<span class="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-sm font-bold">3</span>
+				Target language and tone
+			</h2>
+
+			<div class="relative">
+				<label for="target-language" class="block text-sm font-medium text-gray-700 mb-1">
+					Target language and tone <span class="text-red-500">*</span>
+				</label>
+				<input
+					data-testid="target-language-input"
+					id="target-language"
+					type="text"
+					bind:value={targetLanguage}
+					placeholder='e.g., "Japanese", "formal German", "conversational Spanish"'
+					disabled={workflowState.isRunning}
+					class="block w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 border-gray-300"
+					onfocus={() => { showLanguageDropdown = languageHistory.length > 0; }}
+					onblur={() => { languageTouched = true; setTimeout(() => showLanguageDropdown = false, 200); }}
+				/>
+
+				{#if showLanguageDropdown && languageHistory.length > 0}
+					<div
+						data-testid="language-history-dropdown"
+						class="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto"
+					>
+						<div class="px-3 py-2 text-xs font-medium text-gray-500 border-b">Recent</div>
+						{#each languageHistory as historyItem}
+							<button
+								type="button"
+								data-testid="language-history-item"
+								class="w-full px-3 py-2 text-left hover:bg-gray-100 focus:bg-gray-100 focus:outline-none"
+								onmousedown={(e) => { e.preventDefault(); selectLanguageFromHistory(historyItem); }}
+							>
+								{historyItem}
+							</button>
+						{/each}
+					</div>
+				{/if}
+
+				<p class="mt-1 text-xs text-gray-500">
+					Enter a language name or style description for your translation
+				</p>
+			</div>
+		</div>
+
+		<!-- Step 4: Translation Settings -->
+		<div class="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+			<h2 class="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+				<span class="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-sm font-bold">4</span>
 				Translation Settings
 			</h2>
 
@@ -559,6 +630,7 @@
 	{/if}
 
 	{#if showResults && workflowResult}
+		{@const langCode = getLanguageCode(targetLanguage)}
 		<!-- Results Section -->
 		<div class="mt-6 bg-white rounded-lg border border-gray-200 p-6">
 			<h2 class="text-lg font-semibold text-gray-900 mb-4">Output Documents</h2>
@@ -567,7 +639,7 @@
 				{#each [
 					{ label: 'Converted Markdown', key: 'markdown', filename: `${selectedFile?.name.replace(/\.pdf$/i, '')}-converted.md` },
 					{ label: 'Cleaned Markdown', key: 'cleaned', filename: `${selectedFile?.name.replace(/\.pdf$/i, '')}-cleaned.md` },
-					{ label: 'Japanese Only', key: 'japaneseOnly', filename: `${selectedFile?.name.replace(/\.pdf$/i, '')}-ja.md` },
+					{ label: 'Target Language Only', key: 'japaneseOnly', filename: `${selectedFile?.name.replace(/\.pdf$/i, '')}-${langCode}.md` },
 					{ label: 'Bilingual', key: 'bilingual', filename: `${selectedFile?.name.replace(/\.pdf$/i, '')}-bilingual.md` }
 				] as output}
 					<div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
@@ -599,13 +671,13 @@
 			<div class="flex border-b border-gray-200 mb-4" role="tablist">
 				<button
 					role="tab"
-					aria-selected={activeResultTab === 'japanese-only'}
-					onclick={() => (activeResultTab = 'japanese-only')}
-					class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeResultTab === 'japanese-only'
+					aria-selected={activeResultTab === 'translated-only'}
+					onclick={() => (activeResultTab = 'translated-only')}
+					class="px-4 py-2 text-sm font-medium border-b-2 transition-colors {activeResultTab === 'translated-only'
 						? 'border-blue-600 text-blue-600'
 						: 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}"
 				>
-					Japanese Only
+					Target Language Only
 				</button>
 				<button
 					role="tab"
@@ -620,7 +692,7 @@
 			</div>
 
 			<div class="bg-gray-50 rounded-lg p-4 overflow-auto max-h-96">
-				<pre class="whitespace-pre-wrap text-sm text-gray-800">{activeResultTab === 'japanese-only' ? workflowResult.japaneseOnly : workflowResult.bilingual}</pre>
+				<pre class="whitespace-pre-wrap text-sm text-gray-800">{activeResultTab === 'translated-only' ? workflowResult.japaneseOnly : workflowResult.bilingual}</pre>
 			</div>
 		</div>
 

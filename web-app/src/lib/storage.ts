@@ -5,7 +5,7 @@ const DB_VERSION = 1;
 const STORE_NAME = 'documents';
 
 export type DocumentPhase = 'uploaded' | 'converted' | 'cleaned' | 'translated';
-export type TranslationVariant = 'japanese-only' | 'bilingual';
+export type TranslationVariant = 'japanese-only' | 'translated-only' | 'bilingual';
 
 export interface StoredDocument {
 	id: string;

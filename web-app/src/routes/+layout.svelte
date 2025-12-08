@@ -2,8 +2,41 @@
 	import '../app.css';
 	import { page } from '$app/state';
 	import { base } from '$app/paths';
+	import { goto } from '$app/navigation';
+	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
 
 	let { children } = $props();
+
+	// Track if initial redirect has been performed
+	let initialRedirectDone = $state(false);
+
+	onMount(() => {
+		if (!browser) return;
+
+		const relativePath = getRelativePath(page.url.pathname);
+
+		// Skip redirect if already on settings or help pages
+		if (relativePath.startsWith('/settings')) {
+			initialRedirectDone = true;
+			return;
+		}
+
+		const apiKey = localStorage.getItem('openai_api_key');
+
+		// Only redirect from home page on initial load
+		if (relativePath === '/') {
+			if (!apiKey || apiKey.trim() === '') {
+				// No API key - redirect to settings
+				goto(fullHref('/settings'), { replaceState: true });
+			} else {
+				// API key exists - redirect to workflow
+				goto(fullHref('/workflow'), { replaceState: true });
+			}
+		}
+
+		initialRedirectDone = true;
+	});
 
 	// Primary workflow item (shown at top with separator)
 	const workflowItem = {
