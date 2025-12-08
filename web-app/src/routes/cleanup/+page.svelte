@@ -44,6 +44,19 @@
 	onMount(async () => {
 		if (browser) {
 			await loadDocuments();
+
+			// Load default settings from localStorage
+			const storedModel = localStorage.getItem('default_model');
+			if (storedModel) model = storedModel;
+
+			const storedChunkSize = localStorage.getItem('default_chunk_size');
+			if (storedChunkSize) {
+				const size = parseInt(storedChunkSize, 10);
+				if (!isNaN(size)) chunkSize = size;
+			}
+
+			const storedReasoningEffort = localStorage.getItem('default_reasoning_effort');
+			if (storedReasoningEffort) reasoningEffort = storedReasoningEffort;
 		}
 	});
 
