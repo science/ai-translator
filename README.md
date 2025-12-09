@@ -1,297 +1,338 @@
 # Book Translate
 
-A Node.js command-line tool for translating markdown books to Japanese using the OpenAI GPT API. The tool intelligently splits markdown files into chunks while preserving document structure, translates them via OpenAI, and outputs both Japanese-only and bilingual (alternating EN/JP) versions.
+A browser-based tool for translating PDF books and markdown documents to any language using OpenAI's GPT models. Upload a PDF, clean up OCR errors, and get professional translations—all from your browser.
 
-**NEW:** Now includes **document rectification** - fix OCR errors and PDF conversion artifacts before translation!
+## Overview
+
+Book Translate handles the complete document translation pipeline:
+
+1. **Convert** - Transform PDFs into editable markdown
+2. **Clean Up** - Fix OCR errors and PDF conversion artifacts
+3. **Translate** - Get natural, context-aware translations in any language
+
+All processing happens client-side in your browser. Your documents and API key never leave your machine (except for API calls directly to OpenAI).
+
+## Quick Start
+
+### 1. Open the App
+
+Visit **[science.github.io/ai-translator](https://science.github.io/ai-translator)** to launch the app in your browser.
+
+### 2. Configure Your API Key
+
+Navigate to **Settings** and enter your OpenAI API key. Need help? Click "How to get an API key" for step-by-step instructions including:
+
+- Creating an OpenAI account
+- Setting up billing (required for API access)
+- Generating and saving your key
+
+### 3. Translate Your First Document
+
+**Option A: One-Step Translation** (Recommended)
+
+1. Go to **One Step Translation** in the sidebar
+2. Upload a PDF file
+3. Enter your target language (e.g., "Japanese", "formal German")
+4. Click Start and wait for processing
+5. Download your translated document
+
+**Option B: Step-by-Step**
+
+1. Upload your document on the **Home** page
+2. Convert it on the **Convert PDF** page
+3. Clean it up on the **Cleanup** page
+4. Translate it on the **Translate** page
+5. Download from **My Documents**
 
 ## Features
 
-### Translation Features
-- **Structure-Aware Chunking**: Splits markdown at logical boundaries (headers, paragraphs) to maintain context
-- **Dual Output Formats**:
-  - Japanese-only translation
-  - Bilingual version with alternating English/Japanese sections
-- **Resume Capability**: Cache system allows resuming interrupted translations
-- **Progress Tracking**: Real-time progress updates with ETA calculations
-- **Configurable**: Customizable chunk size, model selection, and output directory
+### One Step Translation
 
-### Rectification Features (NEW)
-- **OCR Error Correction**: Fixes missing/wrong letters (e.g., "ontents" → "Contents", "tae" → "The")
-- **PDF Artifact Removal**: Removes page numbers, footer markers, and gibberish text
-- **Paragraph Flow Restoration**: Rejoins text broken by page breaks and footer markers
-- **Pre-Translation Cleanup**: Clean your documents before translating for better results
-- **Same Pipeline**: Uses the same chunking and progress tracking as translation
+The flagship feature—a unified pipeline that handles everything:
 
-## Prerequisites
+- Upload PDF → Automatic conversion, cleanup, and translation
+- Configure cleanup and translation settings independently
+- Track progress through each phase with visual indicators
+- Download as Markdown or Word document
 
-- **Node.js**: Version 20 LTS or later
-- **OpenAI API Key**: Valid API key with access to GPT models
+**Outputs:**
+- Converted Markdown (raw PDF extraction)
+- Cleaned Markdown (OCR errors fixed)
+- Translated (target language only)
+- Bilingual (alternating original/translated sections)
 
-## Installation
+### PDF to Markdown Conversion
 
-1. Clone the repository:
+Extract text from PDF files while preserving structure:
+
+- Headers, paragraphs, and formatting maintained
+- Fast local processing (no API calls required)
+- Works with text-based and scanned PDFs
+
+### Document Cleanup (Rectification)
+
+Fix common OCR and PDF conversion errors:
+
+- Missing letters: `ontents` → `Contents`
+- Broken words: `Ww hile` → `While`
+- Page numbers and footer markers removed
+- Paragraph flow restored across page breaks
+- PDF gibberish text removed
+
+### Translation
+
+Natural, publication-quality translations:
+
+- **Target language flexibility** - Specify language and tone (e.g., "formal Japanese", "conversational Spanish")
+- **Language history** - Quick access to recently used languages
+- **Context-aware translation** - Optional feature that provides surrounding text context for consistent tone
+- **Dual output** - Get target-language-only and bilingual versions
+
+### Document Management
+
+Full document library with organization features:
+
+- **Phase filtering** - View by stage: Uploaded, Converted, Cleaned, Translated
+- **Search** - Find documents by name
+- **Preview** - View raw markdown or rendered HTML
+- **Export** - Download as original format or Word document
+- **Storage tracking** - Monitor browser storage usage
+
+### Settings
+
+Configure defaults and manage your workspace:
+
+- API key configuration with connection testing
+- Default model, chunk size, and reasoning effort
+- Context-aware translation toggle
+- Storage management with one-click cleanup
+
+## Supported Models
+
+| Model | Speed | Quality | Best For |
+|-------|-------|---------|----------|
+| gpt-5.1 | Slower | Highest | Final translations |
+| gpt-5-mini | Medium | High | General use (default) |
+| gpt-4.1 | Fast | Good | Quick drafts |
+| gpt-4.1-mini | Fastest | Good | Large documents |
+
+GPT-5 models support configurable **reasoning effort** (Low/Medium/High) for balancing speed vs. quality.
+
+## User Guide
+
+### Choosing a Workflow
+
+**Use One Step Translation when:**
+- You have a PDF that needs translation
+- You want the simplest experience
+- You need all output formats
+
+**Use individual pages when:**
+- You only need PDF conversion (no translation)
+- You want to review/edit between steps
+- You're processing markdown files (not PDFs)
+- You need more control over each phase
+
+### Target Language Tips
+
+The target language field accepts natural descriptions:
+
+- `Japanese` - Standard translation
+- `Formal Japanese` - Business/academic tone
+- `Conversational Brazilian Portuguese` - Casual, regional style
+- `Simplified Chinese for technical readers` - Domain-specific adaptation
+
+Your recent languages are saved for quick reuse.
+
+### Document Phases
+
+Documents progress through phases, visible in My Documents:
+
+| Phase | Description |
+|-------|-------------|
+| Uploaded | Original file, unprocessed |
+| Converted | PDF extracted to markdown |
+| Cleaned | OCR errors and artifacts fixed |
+| Translated | Final translation (with variant tags) |
+
+### Storage and Privacy
+
+- **Local storage only** - Documents stored in your browser's IndexedDB
+- **API key security** - Stored locally in localStorage, never transmitted except to OpenAI
+- **No server** - All processing is client-side
+- **Clear anytime** - Delete all documents from Settings
+
+## CLI Tool
+
+For automation or batch processing, a command-line interface is also available:
+
 ```bash
-git clone <repository-url>
-cd book-translate
+# Convert PDF to markdown
+node src/index.js book.pdf --pdf-to-md --output-dir converted/
+
+# Clean up OCR errors
+node src/index.js converted/book.md --rectify --output-dir cleaned/
+
+# Translate to Japanese
+node src/index.js cleaned/book-rectified.md --output-dir translated/
 ```
 
-2. Install dependencies:
+See [CLI Documentation](#cli-reference) below for full options.
+
+## Development
+
+### Prerequisites
+
+- Node.js 20 LTS or later
+- OpenAI API key with billing enabled
+
+### Running Your Own Copy
+
+To host the web app locally or deploy your own instance:
+
+```bash
+cd web-app
+npm install
+npm run dev          # Start development server at http://localhost:5173
+npm run build        # Build for production (outputs to build/)
+npm run preview      # Preview production build locally
+```
+
+### Web App Development
+
+```bash
+cd web-app
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run check        # TypeScript type checking
+npm run test:unit    # Run Vitest unit tests
+npm run test:e2e     # Run Playwright browser tests
+npm run test:e2e:ui  # Playwright with interactive UI
+```
+
+### CLI Development
+
 ```bash
 npm install
+npm test                              # Run all Jest tests
+npm test -- --testPathPattern=chunker # Run specific test file
 ```
 
-3. Set up environment variables:
-```bash
-cp .env.example .env
+### Tech Stack
+
+**Web App:**
+- SvelteKit 2 / Svelte 5
+- Tailwind CSS 4
+- TypeScript
+- IndexedDB (via idb)
+- Vitest + Playwright
+
+**CLI:**
+- Node.js ES Modules
+- OpenAI SDK
+- Jest
+
+### Project Structure
+
+```
+book-translate/
+├── web-app/                    # Browser application
+│   ├── src/
+│   │   ├── routes/            # SvelteKit pages
+│   │   │   ├── +page.svelte           # Home/Upload
+│   │   │   ├── workflow/              # One Step Translation
+│   │   │   ├── convert/               # PDF to Markdown
+│   │   │   ├── cleanup/               # Document rectification
+│   │   │   ├── translate/             # Translation
+│   │   │   ├── documents/             # Document library
+│   │   │   └── settings/              # Configuration
+│   │   └── lib/
+│   │       ├── stores/        # State management
+│   │       ├── services/      # API clients, document operations
+│   │       └── components/    # Reusable UI components
+│   └── tests/                 # E2E tests
+├── src/                       # CLI tool
+│   ├── index.js              # CLI entry point
+│   ├── chunker.js            # Document chunking
+│   ├── translator.js         # OpenAI translation
+│   ├── rectifier.js          # OCR error correction
+│   └── pdfConverter.js       # PDF extraction
+└── test/                      # CLI tests
 ```
 
-4. Edit `.env` and add your OpenAI API key:
-```
-OPENAI_API_KEY=your_actual_api_key_here
-```
-
-## Usage
-
-### Translation Mode (Default)
-
-```bash
-node src/index.js path/to/your-book.md
-```
-
-This will:
-- Read the markdown file
-- Split it into chunks
-- Translate each chunk to Japanese
-- Generate two output files in the `output/` directory:
-  - `your-book-japanese.md` (Japanese only)
-  - `your-book-bilingual.md` (Alternating English/Japanese)
-
-### Rectification Mode (NEW)
-
-Fix OCR errors and PDF conversion artifacts in your documents:
-
-```bash
-node src/index.js path/to/broken-book.md --rectify
-```
-
-This will:
-- Read the markdown file
-- Split it into chunks
-- Fix OCR errors, remove gibberish, and restore paragraph flow
-- Generate cleaned output in the `output/` directory:
-  - `broken-book-rectified.md` (Clean English markdown)
-
-**Common workflow:**
-```bash
-# Step 1: Rectify the broken PDF-to-markdown conversion
-node src/index.js broken-book.md --rectify --output-dir cleaned/
-
-# Step 2: Translate the cleaned version
-node src/index.js cleaned/broken-book-rectified.md --output-dir translated/
-```
-
-### Advanced Options
+## CLI Reference
 
 ```bash
 node src/index.js <input-file> [options]
 ```
 
+**Modes (mutually exclusive):**
+- `--pdf-to-md` - Convert PDF to markdown
+- `--rectify` - Clean up OCR errors (English to English)
+- *(default)* - Translate to Japanese
+
 **Options:**
-- `--rectify`: Enable rectification mode (English-to-English cleanup)
-- `--output-dir <path>`: Specify output directory (default: `output/`)
-- `--chunk-size <number>`: Maximum chunk size in characters (default: `4000`)
-- `--model <model-name>`: OpenAI model to use (default: `gpt-5-mini`)
-- `--reasoning-effort <low|medium|high>`: GPT-5 reasoning effort (default: `medium`)
+- `--output-dir <path>` - Output directory (default: `output/`)
+- `--chunk-size <n>` - Characters per chunk (default: `4000`)
+- `--model <name>` - OpenAI model (default: `gpt-5-mini`)
+- `--reasoning-effort <level>` - GPT-5 reasoning: `low`, `medium`, `high`
 
 **Examples:**
 
 ```bash
-# Rectify with custom output directory
-node src/index.js broken.md --rectify --output-dir cleaned/
+# Full pipeline
+node src/index.js book.pdf --pdf-to-md --output-dir step1/
+node src/index.js step1/book.md --rectify --output-dir step2/
+node src/index.js step2/book-rectified.md --output-dir final/
 
-# Rectify with different model
-node src/index.js broken.md --rectify --model gpt-4o
-
-# Translation: Custom output directory
-node src/index.js book.md --output-dir translated/
-
-# Translation: Custom chunk size
-node src/index.js book.md --chunk-size 2000
-
-# Translation: Specify different model (faster but less sophisticated)
-node src/index.js book.md --model gpt-4o
-
-# Combine options
-node src/index.js book.md --output-dir results/ --chunk-size 3000 --model gpt-4o
+# Quick translation with faster model
+node src/index.js clean-book.md --model gpt-4o --chunk-size 3000
 ```
 
-### Expected Runtime
+## Environment Setup
 
-Translation speed varies by model:
-- **GPT-4o**: ~3-5 seconds per chunk (faster, suitable for large documents)
-- **GPT-5**: ~20-25 seconds per chunk (slower due to extended reasoning, higher quality)
-
-For a typical book (~140 chunks):
-- GPT-4o: 10-15 minutes
-- GPT-5: 45-60 minutes
-
-The tool displays real-time progress with ETA calculations.
-
-## Output Formats
-
-### Japanese-Only (`*-japanese.md`)
-Contains only the translated Japanese text, preserving the original markdown structure (headers, lists, links, formatting).
-
-### Bilingual (`*-bilingual.md`)
-Alternates between original English and Japanese translation:
-```markdown
-## Original Header
-
-Original paragraph text...
-
----
-
-## 翻訳されたヘッダー
-
-翻訳された段落テキスト...
-
----
-```
-
-## Project Structure
-
-```
-book-translate/
-├── src/
-│   ├── index.js                 # Main CLI entry point (handles both modes)
-│   ├── cli.js                   # Command-line argument parser
-│   ├── fileReader.js            # Markdown file reader
-│   ├── chunker.js               # Document chunking logic (shared)
-│   ├── markdownParser.js        # Markdown structure parser
-│   ├── translator.js            # OpenAI translation wrapper
-│   ├── translationEngine.js     # Translation orchestration
-│   ├── rectifier.js             # OpenAI rectification wrapper (NEW)
-│   ├── rectificationEngine.js   # Rectification orchestration (NEW)
-│   ├── cache.js                 # Translation cache system
-│   ├── progressLogger.js        # Progress tracking
-│   └── assembler.js             # Output file assembly (both modes)
-├── test/                        # Jest test suite (133 tests)
-│   ├── fixtures/                # Test markdown files
-│   │   ├── broken-*.md          # Broken document fixtures (NEW)
-│   │   └── expected-*.md        # Expected rectification output (NEW)
-│   └── integration/             # Integration tests
-├── output/                      # Generated translations/rectifications
-├── .env                         # Environment variables (not in git)
-├── .env.example                 # Environment template
-├── package.json                 # Project dependencies
-├── TODO.md                      # Development roadmap
-└── TODO-rectifier.md            # Rectifier feature tracking (NEW)
-```
-
-## How It Works
-
-### Translation Mode
-1. **Read**: Loads the markdown file into memory
-2. **Chunk**: Splits content at header boundaries (H1-H6), subdividing by paragraphs if chunks exceed size limit
-3. **Translate**: Sends each chunk to OpenAI API with translation instructions
-4. **Cache**: Saves translated chunks progressively (enables resume on failure)
-5. **Assemble**: Combines translated chunks into final output files (Japanese-only and bilingual)
-
-### Rectification Mode (NEW)
-1. **Read**: Loads the markdown file into memory
-2. **Chunk**: Splits content using the same chunking logic as translation
-3. **Rectify**: Sends each chunk to OpenAI API with rectification instructions:
-   - Fix OCR errors (missing letters, typos)
-   - Remove PDF artifacts (page numbers, gibberish)
-   - Restore paragraph flow (remove footer markers)
-   - Preserve markdown structure exactly
-4. **Assemble**: Combines rectified chunks into a single cleaned English markdown file
-
-## Chunking Strategy
-
-The chunker preserves document hierarchy (used by both translation and rectification):
-- Primary splitting at header boundaries (H1-H6)
-- Large sections are subdivided by paragraph breaks
-- Each chunk includes metadata (type, header level, index)
-- Headers are included in chunk content to maintain context
-
-## Rectification Use Cases (NEW)
-
-The rectification feature is ideal for:
-
-1. **PDF-to-Markdown Conversions**: Clean up documents converted from PDF using tools like Adobe Acrobat, pdftotext, or OCR software
-2. **Scanned Documents**: Fix OCR errors from scanned books or papers
-3. **Pre-Translation Cleanup**: Ensure high-quality source text before translating to Japanese
-4. **Legacy Document Recovery**: Restore corrupted or poorly formatted text files
-
-**Common errors fixed:**
-- Missing first letters: `ontents` → `Contents`, `Joreface` → `Preface`
-- Broken spacing: `Ww hile` → `While`, `tae` → `The`
-- Footer markers breaking paragraphs: `text\n\nPage 21\n\nmore text` → `text more text`
-- PDF gibberish: Random character strings like `26 Gimam & eo. @ 7 Wat` are removed
-- Code block artifacts: Removes OCR-generated ` ``` ` markers that aren't actual code
-
-## Development
-
-### Running Tests
+Create `.env` from the template:
 
 ```bash
-npm test
+cp .env.example .env
 ```
 
-### Inspecting Chunks
+Add your OpenAI API key:
 
-Debug the chunking process:
-```bash
-node scripts/inspectChunks.js
-```
-
-## Configuration
-
-### Environment Variables
-
-Create a `.env` file with:
 ```
 OPENAI_API_KEY=sk-...
 ```
 
-### Rate Limits & Cost
-
-- The tool processes chunks sequentially to manage API rate limits
-- Translation costs depend on:
-  - Document size (character/token count)
-  - Model selected (GPT-4o vs GPT-5)
-  - OpenAI pricing at time of use
-
-Consider testing with a small sample file first to estimate costs.
-
-## Resume Capability
-
-If translation is interrupted, the cache system saves progress. Simply re-run the same command to resume where you left off.
-
 ## Troubleshooting
 
-**API Key Errors:**
-- Ensure `OPENAI_API_KEY` is set in `.env`
-- Verify the key is valid and has API access
+**"Insufficient quota" error**
+- Add credits to your OpenAI account at [platform.openai.com/settings/organization/billing](https://platform.openai.com/settings/organization/billing)
 
-**Rate Limit Errors:**
-- The tool includes automatic retry logic with exponential backoff
-- For persistent issues, consider reducing chunk size or adding delays
+**"Rate limit exceeded" error**
+- The app automatically retries with backoff
+- New accounts have lower limits that increase over time
+- Try reducing chunk size or using a faster model
 
-**File Not Found:**
-- Verify the input file path is correct
-- Use absolute paths if relative paths fail
+**API key not working**
+- Ensure billing is set up (required even with free credits)
+- Check the key hasn't been revoked
+- Verify no extra spaces when pasting
 
-## License
-
-ISC
+**Poor PDF conversion quality**
+- Scanned PDFs produce more OCR errors—always run Cleanup
+- Some complex layouts may not convert perfectly
 
 ## Dependencies
 
-- `openai` - Official OpenAI API client
-- `dotenv` - Environment variable management
+**Runtime:**
+- `openai` - OpenAI API client
+- `@opendocsg/pdf2md` - PDF to markdown conversion
+- `idb` - IndexedDB wrapper
+- `marked` - Markdown rendering
+- `@mohtasham/md-to-docx` - Word document export
 
-## Development Dependencies
-
-- `jest` - Testing framework
+**Development:**
+- `jest` / `vitest` - Testing frameworks
+- `playwright` - Browser testing
+- `svelte` / `sveltekit` - Web framework
+- `tailwindcss` - Styling
