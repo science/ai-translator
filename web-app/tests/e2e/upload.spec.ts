@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 import * as path from 'path';
 import * as fs from 'fs';
 import { fileURLToPath } from 'url';
+import { gotoHomePageWithClearStorage } from './helpers';
 
 // ES module path resolution
 const __filename = fileURLToPath(import.meta.url);
@@ -9,16 +10,9 @@ const __dirname = path.dirname(__filename);
 
 test.describe('IndexedDB Large File Storage', () => {
 	test.beforeEach(async ({ page }) => {
-		await page.goto('/');
-		// Clear both localStorage and IndexedDB
-		await page.evaluate(async () => {
-			localStorage.clear();
-			// Clear IndexedDB
-			const databases = await indexedDB.databases();
-			for (const db of databases) {
-				if (db.name) indexedDB.deleteDatabase(db.name);
-			}
-		});
+		// Use helper to properly clear storage and navigate to home page
+		// This prevents the automatic redirect to /settings when no API key exists
+		await gotoHomePageWithClearStorage(page);
 	});
 
 	test('large PDF (6MB) persists after navigation using IndexedDB', async ({ page }) => {
@@ -131,14 +125,8 @@ test.describe('IndexedDB Large File Storage', () => {
 
 test.describe('Large File Upload Workflow', () => {
 	test('uploaded file persists when navigating to Convert PDF page', async ({ page }) => {
-		await page.goto('/');
-		await page.evaluate(async () => {
-			localStorage.clear();
-			const databases = await indexedDB.databases();
-			for (const db of databases) {
-				if (db.name) indexedDB.deleteDatabase(db.name);
-			}
-		});
+		// Use helper to properly clear storage and navigate to home page
+		await gotoHomePageWithClearStorage(page);
 
 		// Upload a file
 		const fileInput = page.locator('input[type="file"]');
@@ -162,14 +150,8 @@ test.describe('Large File Upload Workflow', () => {
 	});
 
 	test('file uploaded on home page appears in Convert PDF dropdown after navigation', async ({ page }) => {
-		await page.goto('/');
-		await page.evaluate(async () => {
-			localStorage.clear();
-			const databases = await indexedDB.databases();
-			for (const db of databases) {
-				if (db.name) indexedDB.deleteDatabase(db.name);
-			}
-		});
+		// Use helper to properly clear storage and navigate to home page
+		await gotoHomePageWithClearStorage(page);
 
 		// Upload a reasonably sized PDF
 		const pdfContent = '%PDF-1.4\n' + 'Test PDF content for workflow test';
@@ -205,12 +187,13 @@ test.describe('Large File Upload Workflow', () => {
 
 test.describe('File Upload', () => {
 	test.beforeEach(async ({ page }) => {
-		await page.goto('/');
-		await page.evaluate(() => localStorage.clear());
+		// Use helper to properly clear storage and navigate to home page
+		// This prevents the automatic redirect to /settings when no API key exists
+		await gotoHomePageWithClearStorage(page);
 	});
 
 	test('displays upload dropzone', async ({ page }) => {
-		await page.goto('/');
+		// Already on home page from beforeEach
 
 		const dropzone = page.locator('[data-testid="dropzone"]');
 		await expect(dropzone).toBeVisible();
@@ -218,15 +201,13 @@ test.describe('File Upload', () => {
 	});
 
 	test('shows accepted file types', async ({ page }) => {
-		await page.goto('/');
-
+		// Already on home page from beforeEach
 		await expect(page.getByText(/\.pdf/i)).toBeVisible();
 		await expect(page.getByText(/\.md/i)).toBeVisible();
 	});
 
 	test('allows uploading a markdown file via file input', async ({ page }) => {
-		await page.goto('/');
-
+		// Already on home page from beforeEach
 		// Create a test markdown file
 		const testContent = '# Test Document\n\nThis is a test.';
 		const testFileName = 'test-upload.md';
@@ -246,8 +227,7 @@ test.describe('File Upload', () => {
 	});
 
 	test('allows uploading a PDF file', async ({ page }) => {
-		await page.goto('/');
-
+		// Already on home page from beforeEach
 		// Create a minimal PDF-like content for testing
 		const testFileName = 'test-upload.pdf';
 		const pdfContent = '%PDF-1.4 test content';
@@ -264,8 +244,7 @@ test.describe('File Upload', () => {
 	});
 
 	test('stores uploaded files in IndexedDB', async ({ page }) => {
-		await page.goto('/');
-
+		// Already on home page from beforeEach
 		const testContent = '# Test\n\nContent';
 		const testFileName = 'stored-test.md';
 
@@ -300,8 +279,7 @@ test.describe('File Upload', () => {
 	});
 
 	test('displays uploaded files in recent uploads section', async ({ page }) => {
-		await page.goto('/');
-
+		// Already on home page from beforeEach
 		// Upload a file
 		const fileInput = page.locator('input[type="file"]');
 		await fileInput.setInputFiles({
@@ -317,8 +295,7 @@ test.describe('File Upload', () => {
 	});
 
 	test('shows file size for uploaded files', async ({ page }) => {
-		await page.goto('/');
-
+		// Already on home page from beforeEach
 		const content = '# Test\n\n'.repeat(100); // Create some content with size
 		const fileInput = page.locator('input[type="file"]');
 		await fileInput.setInputFiles({
@@ -332,8 +309,7 @@ test.describe('File Upload', () => {
 	});
 
 	test('shows delete button for uploaded files', async ({ page }) => {
-		await page.goto('/');
-
+		// Already on home page from beforeEach
 		const fileInput = page.locator('input[type="file"]');
 		await fileInput.setInputFiles({
 			name: 'delete-test.md',
@@ -349,8 +325,7 @@ test.describe('File Upload', () => {
 	});
 
 	test('can delete uploaded files', async ({ page }) => {
-		await page.goto('/');
-
+		// Already on home page from beforeEach
 		const fileName = 'to-delete.md';
 		const fileInput = page.locator('input[type="file"]');
 		await fileInput.setInputFiles({
@@ -369,8 +344,7 @@ test.describe('File Upload', () => {
 	});
 
 	test('persists uploaded files after page reload', async ({ page }) => {
-		await page.goto('/');
-
+		// Already on home page from beforeEach
 		const fileName = 'persist-test.md';
 		const fileInput = page.locator('input[type="file"]');
 		await fileInput.setInputFiles({
@@ -381,10 +355,14 @@ test.describe('File Upload', () => {
 
 		await expect(page.getByText(fileName)).toBeVisible({ timeout: 5000 });
 
-		// Reload the page
+		// Reload the page - this will redirect to /workflow because API key exists
 		await page.reload();
 
-		// File should still be visible
+		// Navigate back to home page using client-side navigation to avoid redirect
+		await page.getByRole('link', { name: /upload/i }).click();
+		await page.waitForURL('/');
+
+		// File should still be visible (persisted in IndexedDB)
 		await expect(page.getByText(fileName)).toBeVisible({ timeout: 5000 });
 	});
 
@@ -398,7 +376,7 @@ test.describe('File Upload', () => {
 			pageErrors.push(err.message);
 		});
 
-		await page.goto('/');
+		// Already on home page from beforeEach
 
 		// Create a PDF large enough to trigger stack overflow (>100KB)
 		// The spread operator fails around 100-200KB depending on browser

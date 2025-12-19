@@ -1,15 +1,11 @@
 import { test, expect } from '@playwright/test';
+import { gotoHomePageWithClearStorage } from './helpers';
 
 test.describe('Documents Page - Basic Display', () => {
 	test.beforeEach(async ({ page }) => {
-		await page.goto('/');
-		// Clear IndexedDB
-		await page.evaluate(async () => {
-			const databases = await indexedDB.databases();
-			for (const db of databases) {
-				if (db.name) indexedDB.deleteDatabase(db.name);
-			}
-		});
+		// Use helper to properly clear storage and navigate to home page
+		// This prevents the automatic redirect to /settings when no API key exists
+		await gotoHomePageWithClearStorage(page);
 	});
 
 	test('displays documents page with correct heading', async ({ page }) => {
@@ -25,8 +21,7 @@ test.describe('Documents Page - Basic Display', () => {
 	});
 
 	test('displays uploaded documents in the list', async ({ page }) => {
-		// First upload a file on the home page
-		await page.goto('/');
+		// First upload a file on the home page (already there from beforeEach)
 		const fileInput = page.locator('input[type="file"]');
 		await fileInput.setInputFiles({
 			name: 'test-document.md',
@@ -45,8 +40,7 @@ test.describe('Documents Page - Basic Display', () => {
 	});
 
 	test('displays document metadata: name, type, size, date', async ({ page }) => {
-		// Upload a file first
-		await page.goto('/');
+		// Upload a file first (already on home page from beforeEach)
 		const fileInput = page.locator('input[type="file"]');
 		await fileInput.setInputFiles({
 			name: 'metadata-test.pdf',
@@ -77,8 +71,7 @@ test.describe('Documents Page - Basic Display', () => {
 	});
 
 	test('displays document phase as "Uploaded" for new uploads', async ({ page }) => {
-		// Upload a file
-		await page.goto('/');
+		// Upload a file (already on home page from beforeEach)
 		const fileInput = page.locator('input[type="file"]');
 		await fileInput.setInputFiles({
 			name: 'phase-test.md',
@@ -99,14 +92,8 @@ test.describe('Documents Page - Basic Display', () => {
 
 test.describe('Documents Page - Workflow Phase Filters', () => {
 	test.beforeEach(async ({ page }) => {
-		await page.goto('/');
-		// Clear IndexedDB
-		await page.evaluate(async () => {
-			const databases = await indexedDB.databases();
-			for (const db of databases) {
-				if (db.name) indexedDB.deleteDatabase(db.name);
-			}
-		});
+		// Use helper to properly clear storage and navigate to home page
+		await gotoHomePageWithClearStorage(page);
 	});
 
 	test('displays workflow phase filter tabs in correct order', async ({ page }) => {
@@ -155,8 +142,7 @@ test.describe('Documents Page - Workflow Phase Filters', () => {
 	});
 
 	test('filter tabs filter documents by phase', async ({ page }) => {
-		// Upload a file (will be in "Uploaded" phase)
-		await page.goto('/');
+		// Upload a file (will be in "Uploaded" phase) - already on home page from beforeEach
 		const fileInput = page.locator('input[type="file"]');
 		await fileInput.setInputFiles({
 			name: 'filter-test.md',
@@ -185,14 +171,8 @@ test.describe('Documents Page - Workflow Phase Filters', () => {
 
 test.describe('Documents Page - Search', () => {
 	test.beforeEach(async ({ page }) => {
-		await page.goto('/');
-		// Clear IndexedDB
-		await page.evaluate(async () => {
-			const databases = await indexedDB.databases();
-			for (const db of databases) {
-				if (db.name) indexedDB.deleteDatabase(db.name);
-			}
-		});
+		// Use helper to properly clear storage and navigate to home page
+		await gotoHomePageWithClearStorage(page);
 	});
 
 	test('search input is present', async ({ page }) => {
@@ -204,8 +184,7 @@ test.describe('Documents Page - Search', () => {
 	});
 
 	test('search filters documents by name', async ({ page }) => {
-		// Upload multiple files
-		await page.goto('/');
+		// Upload multiple files (already on home page from beforeEach)
 		const fileInput = page.locator('input[type="file"]');
 
 		await fileInput.setInputFiles({
@@ -239,7 +218,7 @@ test.describe('Documents Page - Search', () => {
 	});
 
 	test('search is case-insensitive', async ({ page }) => {
-		await page.goto('/');
+		// Already on home page from beforeEach
 		const fileInput = page.locator('input[type="file"]');
 		await fileInput.setInputFiles({
 			name: 'MyDocument.md',
@@ -259,18 +238,12 @@ test.describe('Documents Page - Search', () => {
 
 test.describe('Documents Page - Document Actions', () => {
 	test.beforeEach(async ({ page }) => {
-		await page.goto('/');
-		// Clear IndexedDB
-		await page.evaluate(async () => {
-			const databases = await indexedDB.databases();
-			for (const db of databases) {
-				if (db.name) indexedDB.deleteDatabase(db.name);
-			}
-		});
+		// Use helper to properly clear storage and navigate to home page
+		await gotoHomePageWithClearStorage(page);
 	});
 
 	test('each document row has a delete button', async ({ page }) => {
-		await page.goto('/');
+		// Already on home page from beforeEach
 		const fileInput = page.locator('input[type="file"]');
 		await fileInput.setInputFiles({
 			name: 'delete-action-test.md',
@@ -286,7 +259,7 @@ test.describe('Documents Page - Document Actions', () => {
 	});
 
 	test('clicking delete removes the document', async ({ page }) => {
-		await page.goto('/');
+		// Already on home page from beforeEach
 		const fileInput = page.locator('input[type="file"]');
 		await fileInput.setInputFiles({
 			name: 'to-be-deleted.md',
@@ -307,7 +280,7 @@ test.describe('Documents Page - Document Actions', () => {
 	});
 
 	test('each document row has a download button', async ({ page }) => {
-		await page.goto('/');
+		// Already on home page from beforeEach
 		const fileInput = page.locator('input[type="file"]');
 		await fileInput.setInputFiles({
 			name: 'download-test.md',
@@ -323,7 +296,7 @@ test.describe('Documents Page - Document Actions', () => {
 	});
 
 	test('clicking download triggers file download', async ({ page }) => {
-		await page.goto('/');
+		// Already on home page from beforeEach
 		const fileInput = page.locator('input[type="file"]');
 		await fileInput.setInputFiles({
 			name: 'download-me.md',
@@ -347,7 +320,7 @@ test.describe('Documents Page - Document Actions', () => {
 	});
 
 	test('each document row has a preview button', async ({ page }) => {
-		await page.goto('/');
+		// Already on home page from beforeEach
 		const fileInput = page.locator('input[type="file"]');
 		await fileInput.setInputFiles({
 			name: 'preview-test.md',
@@ -365,18 +338,12 @@ test.describe('Documents Page - Document Actions', () => {
 
 test.describe('Documents Page - Preview Feature', () => {
 	test.beforeEach(async ({ page }) => {
-		await page.goto('/');
-		// Clear IndexedDB
-		await page.evaluate(async () => {
-			const databases = await indexedDB.databases();
-			for (const db of databases) {
-				if (db.name) indexedDB.deleteDatabase(db.name);
-			}
-		});
+		// Use helper to properly clear storage and navigate to home page
+		await gotoHomePageWithClearStorage(page);
 	});
 
 	test('clicking preview on PDF opens PDF in new tab', async ({ page, context }) => {
-		await page.goto('/');
+		// Already on home page from beforeEach
 		const fileInput = page.locator('input[type="file"]');
 
 		// Create a minimal PDF
@@ -417,7 +384,7 @@ test.describe('Documents Page - Preview Feature', () => {
 	});
 
 	test('clicking preview on markdown shows preview menu with raw and rendered options', async ({ page }) => {
-		await page.goto('/');
+		// Already on home page from beforeEach
 		const fileInput = page.locator('input[type="file"]');
 		await fileInput.setInputFiles({
 			name: 'markdown-preview.md',
@@ -440,7 +407,7 @@ test.describe('Documents Page - Preview Feature', () => {
 	});
 
 	test('View Raw opens new tab with raw markdown content', async ({ page, context }) => {
-		await page.goto('/');
+		// Already on home page from beforeEach
 		const fileInput = page.locator('input[type="file"]');
 		const markdownContent = '# Test Heading\n\nSome **bold** text.';
 		await fileInput.setInputFiles({
@@ -472,7 +439,7 @@ test.describe('Documents Page - Preview Feature', () => {
 	});
 
 	test('View Rendered opens new tab with HTML-rendered markdown', async ({ page, context }) => {
-		await page.goto('/');
+		// Already on home page from beforeEach
 		const fileInput = page.locator('input[type="file"]');
 		const markdownContent = '# Test Heading\n\nSome **bold** text.';
 		await fileInput.setInputFiles({
@@ -505,7 +472,7 @@ test.describe('Documents Page - Preview Feature', () => {
 	});
 
 	test('preview menu closes when clicking outside', async ({ page }) => {
-		await page.goto('/');
+		// Already on home page from beforeEach
 		const fileInput = page.locator('input[type="file"]');
 		await fileInput.setInputFiles({
 			name: 'menu-close-test.md',
@@ -558,14 +525,8 @@ async function addDocumentToIndexedDB(page: any, doc: any) {
 
 test.describe('Documents Page - Document Phase Display', () => {
 	test.beforeEach(async ({ page }) => {
-		await page.goto('/');
-		// Clear IndexedDB
-		await page.evaluate(async () => {
-			const databases = await indexedDB.databases();
-			for (const db of databases) {
-				if (db.name) indexedDB.deleteDatabase(db.name);
-			}
-		});
+		// Use helper to properly clear storage and navigate to home page
+		await gotoHomePageWithClearStorage(page);
 	});
 
 	test('displays "Uploaded" phase for uploaded documents', async ({ page }) => {
