@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
+import { is5SeriesModel, getValidReasoningEffort } from './models.js';
 
 dotenv.config();
 
@@ -35,31 +36,7 @@ export function createTranslator(options = {}) {
   const contextAware = options.contextAware !== false; // Default to true
   const defaultTargetLanguage = options.targetLanguage || 'Japanese';
 
-  // Helper to check if model is GPT-5.1 family (supports "none", not "minimal")
-  function isGpt51Model(modelName) {
-    return /gpt-5\.1/.test(modelName);
-  }
-
-  // Helper to get valid reasoning_effort for the model
-  // GPT-5.1: supports none, low, medium, high (default: none)
-  // GPT-5/5-mini/5-nano: supports minimal, low, medium, high (default: medium)
-  function getValidReasoningEffort(modelName, requestedEffort) {
-    const isGpt51 = isGpt51Model(modelName);
-
-    if (isGpt51) {
-      // GPT-5.1 defaults to "none" and doesn't support "minimal"
-      if (!requestedEffort) return 'none';
-      if (requestedEffort === 'minimal') return 'none';
-      return requestedEffort;
-    } else {
-      // GPT-5/5-mini/5-nano default to "medium" and don't support "none"
-      if (!requestedEffort) return 'medium';
-      if (requestedEffort === 'none') return 'minimal';
-      return requestedEffort;
-    }
-  }
-
-  const reasoningEffort = getValidReasoningEffort(model, options.reasoningEffort);
+  const reasoningEffort = getValidReasoningEffort(model, options.reasoningEffort) || 'medium';
 
   function isRetryableError(error) {
     const retryableStatusCodes = [429, 500, 502, 503, 504];
@@ -227,7 +204,7 @@ CRITICAL: Complete Translation Required:
           requestParams.response_format = responseFormatSchema;
         }
 
-        if (model.startsWith('gpt-5')) {
+        if (is5SeriesModel(model)) {
           requestParams.verbosity = verbosity;
           requestParams.reasoning_effort = reasoningEffort;
         }
