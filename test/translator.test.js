@@ -306,8 +306,8 @@ describe('translator', () => {
       );
     });
 
-    test('should use "none" as default reasoning_effort for gpt-5.1 models', async () => {
-      const gpt51Translator = createTranslator({ model: 'gpt-5.1' });
+    test('should use "none" as default reasoning_effort for gpt-5.2 models', async () => {
+      const gpt51Translator = createTranslator({ model: 'gpt-5.2' });
       gpt51Translator.client.chat.completions.create = mockCreate;
 
       mockCreate.mockResolvedValue({
@@ -322,14 +322,14 @@ describe('translator', () => {
 
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: 'gpt-5.1',
+          model: 'gpt-5.2',
           reasoning_effort: 'none'
         })
       );
     });
 
-    test('should convert "minimal" to "none" for gpt-5.1 models', async () => {
-      const gpt51Translator = createTranslator({ model: 'gpt-5.1', reasoningEffort: 'minimal' });
+    test('should convert "minimal" to "none" for gpt-5.2 models', async () => {
+      const gpt51Translator = createTranslator({ model: 'gpt-5.2', reasoningEffort: 'minimal' });
       gpt51Translator.client.chat.completions.create = mockCreate;
 
       mockCreate.mockResolvedValue({
@@ -344,7 +344,7 @@ describe('translator', () => {
 
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: 'gpt-5.1',
+          model: 'gpt-5.2',
           reasoning_effort: 'none'
         })
       );
@@ -394,8 +394,8 @@ describe('translator', () => {
       );
     });
 
-    test('should include gpt-5 parameters for gpt-5.1-mini model with "none" default', async () => {
-      const gpt51MiniTranslator = createTranslator({ model: 'gpt-5.1-mini' });
+    test('should include gpt-5 parameters for gpt-5.2-mini model with "none" default', async () => {
+      const gpt51MiniTranslator = createTranslator({ model: 'gpt-5.2-mini' });
       gpt51MiniTranslator.client.chat.completions.create = mockCreate;
 
       mockCreate.mockResolvedValue({
@@ -410,13 +410,13 @@ describe('translator', () => {
 
       expect(mockCreate).toHaveBeenCalledWith(
         expect.objectContaining({
-          model: 'gpt-5.1-mini',
+          model: 'gpt-5.2-mini',
           reasoning_effort: 'none'
         })
       );
     });
 
-    test('should allow "low" reasoning_effort for both gpt-5 and gpt-5.1 models', async () => {
+    test('should allow "low" reasoning_effort for both gpt-5 and gpt-5.2 models', async () => {
       const gpt5Translator = createTranslator({ model: 'gpt-5', reasoningEffort: 'low' });
       gpt5Translator.client.chat.completions.create = mockCreate;
 

@@ -396,7 +396,7 @@ test.describe('Model Selection', () => {
 		await clearAllStorage(page);
 	});
 
-	test('model dropdown contains correct options: gpt-5.1, gpt-5-mini, gpt-4.1, gpt-4.1-mini', async ({
+	test('model dropdown contains correct options: gpt-5.2, gpt-5-mini, gpt-4.1, gpt-4.1-mini', async ({
 		page
 	}) => {
 		await page.goto('/translate');
@@ -408,7 +408,7 @@ test.describe('Model Selection', () => {
 		const options = await modelSelect.locator('option').allTextContents();
 
 		// Should contain exactly these models
-		expect(options).toEqual(['gpt-5.1', 'gpt-5-mini', 'gpt-4.1', 'gpt-4.1-mini']);
+		expect(options).toEqual(['gpt-5.2', 'gpt-5-mini', 'gpt-4.1', 'gpt-4.1-mini']);
 	});
 
 	test('default model is gpt-5-mini', async ({ page }) => {
@@ -426,11 +426,11 @@ test.describe('Model Selection', () => {
 		await expect(reasoningLabel).toBeVisible();
 	});
 
-	test('reasoning effort is visible when gpt-5.1 is selected', async ({ page }) => {
+	test('reasoning effort is visible when gpt-5.2 is selected', async ({ page }) => {
 		await page.goto('/translate');
 
 		const modelSelect = page.getByTestId('model-select');
-		await modelSelect.selectOption('gpt-5.1');
+		await modelSelect.selectOption('gpt-5.2');
 
 		const reasoningLabel = page.getByText('Reasoning Effort');
 		await expect(reasoningLabel).toBeVisible();
@@ -483,13 +483,13 @@ test.describe('Model Selection', () => {
 		await expect(reasoningLabel).not.toBeVisible();
 	});
 
-	test('gpt-5.1 shows "None" option for reasoning effort', async ({ page }) => {
+	test('gpt-5.2 shows "None" option for reasoning effort', async ({ page }) => {
 		await page.goto('/translate');
 		await page.waitForLoadState('networkidle');
 
-		// Select gpt-5.1
+		// Select gpt-5.2
 		const modelSelect = page.getByTestId('model-select');
-		await modelSelect.selectOption('gpt-5.1');
+		await modelSelect.selectOption('gpt-5.2');
 
 		// Get reasoning effort options
 		const reasoningSelect = page.locator('select').filter({ hasText: /Low|Medium|High/ }).last();
@@ -515,7 +515,7 @@ test.describe('Model Selection', () => {
 		expect(options).toEqual(['Minimal', 'Low', 'Medium', 'High']);
 	});
 
-	test('reasoning effort options change when switching between gpt-5.1 and gpt-5-mini', async ({
+	test('reasoning effort options change when switching between gpt-5.2 and gpt-5-mini', async ({
 		page
 	}) => {
 		await page.goto('/translate');
@@ -528,8 +528,8 @@ test.describe('Model Selection', () => {
 		let options = await reasoningSelect.locator('option').allTextContents();
 		expect(options).toEqual(['Minimal', 'Low', 'Medium', 'High']);
 
-		// Switch to gpt-5.1
-		await modelSelect.selectOption('gpt-5.1');
+		// Switch to gpt-5.2
+		await modelSelect.selectOption('gpt-5.2');
 		options = await reasoningSelect.locator('option').allTextContents();
 		expect(options).toEqual(['None', 'Low', 'Medium', 'High']);
 
@@ -562,10 +562,10 @@ test.describe('Model Selection', () => {
 		await page.goto('/translate');
 		await page.waitForLoadState('networkidle');
 
-		// Select gpt-5.1 model
+		// Select gpt-5.2 model
 		const modelSelect = page.getByTestId('model-select');
-		await modelSelect.selectOption('gpt-5.1');
-		await expect(modelSelect).toHaveValue('gpt-5.1');
+		await modelSelect.selectOption('gpt-5.2');
+		await expect(modelSelect).toHaveValue('gpt-5.2');
 
 		// Select the document and fill language
 		await page.locator('select').first().selectOption('doc_md_123');
@@ -581,7 +581,7 @@ test.describe('Model Selection', () => {
 
 		// Verify the OpenAI API was called with reasoning_effort
 		const capturedRequest = getRequest();
-		expect(capturedRequest?.model).toBe('gpt-5.1');
+		expect(capturedRequest?.model).toBe('gpt-5.2');
 		expect(capturedRequest?.reasoning_effort).toBe('medium');
 	});
 

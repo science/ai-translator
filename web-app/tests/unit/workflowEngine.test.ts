@@ -203,7 +203,7 @@ describe('Workflow Engine', () => {
 
 		it('passes translation settings to translator', async () => {
 			const customTranslationSettings: TranslationSettings = {
-				model: 'gpt-5.1',
+				model: 'gpt-5.2',
 				chunkSize: 3000,
 				reasoningEffort: 'low',
 				contextAware: false,
@@ -223,7 +223,7 @@ describe('Workflow Engine', () => {
 			expect(createTranslator).toHaveBeenCalledWith(
 				expect.objectContaining({
 					apiKey: 'test-key',
-					model: 'gpt-5.1',
+					model: 'gpt-5.2',
 					contextAware: false,
 					reasoningEffort: 'low'
 				})

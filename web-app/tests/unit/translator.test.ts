@@ -297,7 +297,7 @@ describe('translator service', () => {
 				expect(body.response_format).toBeUndefined();
 			});
 
-			it('should use "none" as default reasoning_effort for gpt-5.1 models', async () => {
+			it('should use "none" as default reasoning_effort for gpt-5.2 models', async () => {
 				globalThis.fetch = vi.fn().mockResolvedValue({
 					ok: true,
 					json: () =>
@@ -307,7 +307,7 @@ describe('translator service', () => {
 						})
 				});
 
-				const translator = createTranslator({ apiKey: 'test-key', model: 'gpt-5.1' });
+				const translator = createTranslator({ apiKey: 'test-key', model: 'gpt-5.2' });
 				await translator.translateChunk('Test');
 
 				const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
@@ -315,7 +315,7 @@ describe('translator service', () => {
 				expect(body.reasoning_effort).toBe('none');
 			});
 
-			it('should convert "minimal" to "none" for gpt-5.1 models', async () => {
+			it('should convert "minimal" to "none" for gpt-5.2 models', async () => {
 				globalThis.fetch = vi.fn().mockResolvedValue({
 					ok: true,
 					json: () =>
@@ -327,7 +327,7 @@ describe('translator service', () => {
 
 				const translator = createTranslator({
 					apiKey: 'test-key',
-					model: 'gpt-5.1',
+					model: 'gpt-5.2',
 					reasoningEffort: 'minimal'
 				});
 				await translator.translateChunk('Test');
