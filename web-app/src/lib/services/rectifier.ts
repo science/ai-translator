@@ -2,6 +2,7 @@
 // Ported from CLI's src/rectifier.js
 
 import { createOpenAIClient } from './openai';
+import { is5SeriesModel } from '../models';
 
 export interface RectifierOptions {
 	apiKey: string;
@@ -119,7 +120,7 @@ export function createRectifier(options: RectifierOptions): Rectifier {
 			]
 		};
 
-		if (model.startsWith('gpt-5')) {
+		if (is5SeriesModel(model)) {
 			requestOptions.verbosity = verbosity;
 			requestOptions.reasoning_effort = reasoningEffort;
 		}

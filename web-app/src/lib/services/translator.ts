@@ -2,6 +2,7 @@
 // Ported from CLI's src/translator.js
 
 import { createOpenAIClient } from './openai';
+import { is5SeriesModel } from '../models';
 
 export interface TranslationContext {
 	previousEnglish?: string | null;
@@ -111,7 +112,7 @@ export function createTranslator(options: TranslatorOptions): Translator {
 			requestOptions.response_format = RESPONSE_FORMAT_SCHEMA;
 		}
 
-		if (model.startsWith('gpt-5')) {
+		if (is5SeriesModel(model)) {
 			requestOptions.verbosity = verbosity;
 			requestOptions.reasoning_effort = reasoningEffort;
 		}
