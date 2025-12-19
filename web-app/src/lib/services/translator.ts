@@ -2,6 +2,7 @@
 // Ported from CLI's src/translator.js
 
 import { createOpenAIClient } from './openai';
+import { is5SeriesModel, getValidReasoningEffort as getModelReasoningEffort } from '../models';
 
 export interface TranslationContext {
 	previousEnglish?: string | null;
@@ -61,31 +62,8 @@ export function createTranslator(options: TranslatorOptions): Translator {
 	const verbosity = options.verbosity || 'low';
 	const defaultTargetLanguage = options.targetLanguage || 'Japanese';
 
-	// Helper to check if model is GPT-5.1 family (supports "none", not "minimal")
-	function isGpt51Model(modelName: string): boolean {
-		return /gpt-5\.1/.test(modelName);
-	}
-
-	// Helper to get valid reasoning_effort for the model
-	// GPT-5.1: supports none, low, medium, high (default: none)
-	// GPT-5/5-mini/5-nano: supports minimal, low, medium, high (default: medium)
-	function getValidReasoningEffort(modelName: string, requestedEffort?: string): string {
-		const isGpt51 = isGpt51Model(modelName);
-
-		if (isGpt51) {
-			// GPT-5.1 defaults to "none" and doesn't support "minimal"
-			if (!requestedEffort) return 'none';
-			if (requestedEffort === 'minimal') return 'none';
-			return requestedEffort;
-		} else {
-			// GPT-5/5-mini/5-nano default to "medium" and don't support "none"
-			if (!requestedEffort) return 'medium';
-			if (requestedEffort === 'none') return 'minimal';
-			return requestedEffort;
-		}
-	}
-
-	const reasoningEffort = getValidReasoningEffort(model, options.reasoningEffort);
+	// Use centralized reasoning effort logic from models.ts
+	const reasoningEffort = getModelReasoningEffort(model, options.reasoningEffort) || 'medium';
 
 	async function translateChunk(
 		chunk: string,
@@ -111,7 +89,7 @@ export function createTranslator(options: TranslatorOptions): Translator {
 			requestOptions.response_format = RESPONSE_FORMAT_SCHEMA;
 		}
 
-		if (model.startsWith('gpt-5')) {
+		if (is5SeriesModel(model)) {
 			requestOptions.verbosity = verbosity;
 			requestOptions.reasoning_effort = reasoningEffort;
 		}

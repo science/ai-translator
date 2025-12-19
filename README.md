@@ -111,7 +111,7 @@ Configure defaults and manage your workspace:
 
 | Model | Speed | Quality | Best For |
 |-------|-------|---------|----------|
-| gpt-5.1 | Slower | Highest | Final translations |
+| gpt-5.2 | Slower | Highest | Final translations |
 | gpt-5-mini | Medium | High | General use (default) |
 | gpt-4.1 | Fast | Good | Quick drafts |
 | gpt-4.1-mini | Fastest | Good | Large documents |

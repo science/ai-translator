@@ -1,6 +1,8 @@
 // Browser-compatible OpenAI API service
 // Uses native fetch() instead of OpenAI SDK
 
+import { is5SeriesModel } from '../models';
+
 export interface ChatMessage {
 	role: 'system' | 'user' | 'assistant';
 	content: string;
@@ -103,8 +105,8 @@ export function createOpenAIClient(options: OpenAIClientOptions): OpenAIClient {
 					body.response_format = completionOptions.response_format;
 				}
 
-				// Add GPT-5 parameters if model starts with gpt-5
-				if (completionOptions.model.startsWith('gpt-5')) {
+				// Add GPT-5 parameters if model is in the GPT-5 series
+				if (is5SeriesModel(completionOptions.model)) {
 					if (completionOptions.verbosity) {
 						body.verbosity = completionOptions.verbosity;
 					}

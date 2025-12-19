@@ -34,6 +34,12 @@
 	import { exportMarkdownAsDocx } from '$lib/services/docxExporter';
 	import { getLanguageHistory, addLanguageToHistory } from '$lib/languageHistory';
 	import { getLanguageCode } from '$lib/languageCode';
+	import {
+		MODELS,
+		DEFAULT_MODEL,
+		is5SeriesModel as checkIs5Series,
+		getReasoningEffortOptions
+	} from '$lib/models';
 
 	// State
 	let workflowState = $state<WorkflowState>(createWorkflowState());
@@ -45,10 +51,10 @@
 	let activeResultTab = $state<'translated-only' | 'bilingual'>('translated-only');
 
 	// Settings state (bound to form inputs)
-	let cleanupModel = $state('gpt-5-mini');
+	let cleanupModel = $state(DEFAULT_MODEL);
 	let cleanupChunkSize = $state(4000);
 	let cleanupReasoningEffort = $state('medium');
-	let translationModel = $state('gpt-5-mini');
+	let translationModel = $state(DEFAULT_MODEL);
 	let translationChunkSize = $state(4000);
 	let translationReasoningEffort = $state('medium');
 	let translationContextAware = $state(true);
@@ -65,32 +71,12 @@
 	let showResults = $derived(isWorkflowComplete(workflowState) && workflowResult !== null);
 
 	// Check if the selected model is a 5-series model (supports reasoning effort)
-	let isCleanup5Series = $derived(cleanupModel.startsWith('gpt-5'));
-	let isTranslation5Series = $derived(translationModel.startsWith('gpt-5'));
+	let isCleanup5Series = $derived(checkIs5Series(cleanupModel));
+	let isTranslation5Series = $derived(checkIs5Series(translationModel));
 
-	// Check if the model is GPT-5.1 family (supports "none", not "minimal")
-	let isCleanupGpt51 = $derived(/gpt-5\.1/.test(cleanupModel));
-	let isTranslationGpt51 = $derived(/gpt-5\.1/.test(translationModel));
-
-	// Get reasoning effort options based on model type
-	function getReasoningOptions(isGpt51: boolean) {
-		return isGpt51
-			? [
-					{ value: 'none', label: 'None' },
-					{ value: 'low', label: 'Low' },
-					{ value: 'medium', label: 'Medium' },
-					{ value: 'high', label: 'High' }
-				]
-			: [
-					{ value: 'minimal', label: 'Minimal' },
-					{ value: 'low', label: 'Low' },
-					{ value: 'medium', label: 'Medium' },
-					{ value: 'high', label: 'High' }
-				];
-	}
-
-	let cleanupReasoningOptions = $derived(getReasoningOptions(isCleanupGpt51));
-	let translationReasoningOptions = $derived(getReasoningOptions(isTranslationGpt51));
+	// Get reasoning effort options based on model type (from centralized config)
+	let cleanupReasoningOptions = $derived(getReasoningEffortOptions(cleanupModel) || []);
+	let translationReasoningOptions = $derived(getReasoningEffortOptions(translationModel) || []);
 
 	onMount(async () => {
 		if (browser) {
@@ -423,10 +409,9 @@
 						disabled={workflowState.isRunning}
 						class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 text-sm"
 					>
-						<option value="gpt-5.1">gpt-5.1</option>
-						<option value="gpt-5-mini">gpt-5-mini</option>
-						<option value="gpt-4.1">gpt-4.1</option>
-						<option value="gpt-4.1-mini">gpt-4.1-mini</option>
+						{#each MODELS as m (m.id)}
+							<option value={m.id}>{m.label}</option>
+						{/each}
 					</select>
 				</div>
 				<div>
@@ -518,10 +503,9 @@
 						disabled={workflowState.isRunning}
 						class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 text-sm"
 					>
-						<option value="gpt-5.1">gpt-5.1</option>
-						<option value="gpt-5-mini">gpt-5-mini</option>
-						<option value="gpt-4.1">gpt-4.1</option>
-						<option value="gpt-4.1-mini">gpt-4.1-mini</option>
+						{#each MODELS as m (m.id)}
+							<option value={m.id}>{m.label}</option>
+						{/each}
 					</select>
 				</div>
 				<div>

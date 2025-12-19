@@ -14,6 +14,36 @@ export async function clearAllStorage(page: Page) {
 }
 
 /**
+ * Navigates to the home page after clearing storage.
+ *
+ * The app has redirect logic in +layout.svelte:
+ * - No API key: '/' redirects to '/settings'
+ * - With API key: '/' redirects to '/workflow'
+ *
+ * To stay on '/' for testing, we:
+ * 1. Go to /settings (full page load, layout mounts, onMount runs)
+ * 2. Clear storage and set a dummy API key
+ * 3. Use client-side navigation (click link) to go to '/'
+ *    - This doesn't remount the layout, so onMount doesn't run again
+ *    - The redirect logic doesn't trigger
+ */
+export async function gotoHomePageWithClearStorage(page: Page) {
+	// First go to settings page (full page load establishes browser context)
+	await page.goto('/settings');
+	// Clear all storage
+	await clearAllStorage(page);
+	// Set a dummy API key so we don't get redirected to /settings if onMount runs
+	await page.evaluate(() => {
+		localStorage.setItem('openai_api_key', 'test-key-for-navigation');
+	});
+	// Use client-side navigation by clicking the sidebar link
+	// This avoids triggering onMount again (which would redirect to /workflow)
+	await page.getByRole('link', { name: /upload/i }).click();
+	// Wait for navigation to complete
+	await page.waitForURL('/');
+}
+
+/**
  * Document interface for test fixtures
  */
 export interface TestDocument {

@@ -16,6 +16,12 @@
 		resetProgress
 	} from '$lib/progress';
 	import ProgressIndicator from '$lib/components/ProgressIndicator.svelte';
+	import {
+		MODELS,
+		DEFAULT_MODEL,
+		is5SeriesModel as checkIs5Series,
+		getReasoningEffortOptions
+	} from '$lib/models';
 
 	// Browser services for direct OpenAI calls
 	import { chunkBySize } from '$lib/services/chunker';
@@ -33,7 +39,7 @@
 
 	let documents = $state<DocumentListItem[]>([]);
 	let selectedDocId = $state('');
-	let model = $state('gpt-5-mini');
+	let model = $state(DEFAULT_MODEL);
 	let chunkSize = $state(4000);
 	let reasoningEffort = $state('medium');
 	let isCleaning = $state(false);
@@ -75,7 +81,10 @@
 	let markdownDocuments = $derived(documents.filter((doc) => doc.type === 'markdown'));
 
 	// Check if the selected model is a 5-series model (supports reasoning effort)
-	let is5SeriesModel = $derived(model.startsWith('gpt-5'));
+	let is5SeriesModel = $derived(checkIs5Series(model));
+
+	// Get reasoning effort options based on model type (from centralized config)
+	let reasoningEffortOptions = $derived(getReasoningEffortOptions(model) || []);
 
 	// Get the selected document info (not full document with content)
 	let selectedDocInfo = $derived(documents.find((doc) => doc.id === selectedDocId));
@@ -224,10 +233,9 @@
 					disabled={isCleaning}
 					class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
 				>
-					<option value="gpt-5.1">gpt-5.1</option>
-					<option value="gpt-5-mini">gpt-5-mini</option>
-					<option value="gpt-4.1">gpt-4.1</option>
-					<option value="gpt-4.1-mini">gpt-4.1-mini</option>
+					{#each MODELS as m (m.id)}
+						<option value={m.id}>{m.label}</option>
+					{/each}
 				</select>
 			</div>
 			<div>
@@ -249,9 +257,9 @@
 					disabled={isCleaning}
 					class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
 				>
-					<option value="low">Low</option>
-					<option value="medium">Medium</option>
-					<option value="high">High</option>
+					{#each reasoningEffortOptions as option (option.value)}
+						<option value={option.value}>{option.label}</option>
+					{/each}
 				</select>
 			</div>
 		{/if}

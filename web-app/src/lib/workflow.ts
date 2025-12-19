@@ -1,5 +1,6 @@
 // Workflow types for the Complete Conversion feature
 import type { ProgressState } from './progress.js';
+import { DEFAULT_MODEL } from './models.js';
 
 // Phase identifiers
 export type WorkflowPhaseId = 'convert' | 'cleanup' | 'translate';
@@ -64,13 +65,13 @@ export const DEFAULT_PHASES: WorkflowPhase[] = [
 
 // Default settings
 export const DEFAULT_CLEANUP_SETTINGS: CleanupSettings = {
-	model: 'gpt-5-mini',
+	model: DEFAULT_MODEL,
 	chunkSize: 4000,
 	reasoningEffort: 'medium'
 };
 
 export const DEFAULT_TRANSLATION_SETTINGS: TranslationSettings = {
-	model: 'gpt-5-mini',
+	model: DEFAULT_MODEL,
 	chunkSize: 4000,
 	reasoningEffort: 'medium',
 	contextAware: true,

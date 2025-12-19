@@ -116,7 +116,13 @@ test.describe('App Layout', () => {
 	});
 
 	test('highlights the current navigation item', async ({ page }) => {
-		await page.goto('/');
+		// Go to settings first (doesn't redirect), set API key, then navigate to '/' via sidebar link
+		await page.goto('/settings');
+		await page.evaluate(() => {
+			localStorage.setItem('openai_api_key', 'test-key');
+		});
+		await page.getByRole('link', { name: /upload/i }).click();
+		await page.waitForURL('/');
 
 		// Upload should be active on home page
 		const uploadLink = page.getByRole('link', { name: /upload/i });

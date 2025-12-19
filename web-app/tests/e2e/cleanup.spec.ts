@@ -314,7 +314,7 @@ test.describe('Document Cleanup (Rectification)', () => {
 		await expect(button).toHaveText('Start Cleanup');
 	});
 
-	test('model dropdown contains correct options: gpt-5.1, gpt-5-mini, gpt-4.1, gpt-4.1-mini', async ({
+	test('model dropdown contains correct options: gpt-5.2, gpt-5-mini, gpt-4.1, gpt-4.1-mini', async ({
 		page
 	}) => {
 		await page.goto('/cleanup');
@@ -327,7 +327,7 @@ test.describe('Document Cleanup (Rectification)', () => {
 		const options = await modelSelect.locator('option').allTextContents();
 
 		// Should contain exactly these models
-		expect(options).toEqual(['gpt-5.1', 'gpt-5-mini', 'gpt-4.1', 'gpt-4.1-mini']);
+		expect(options).toEqual(['gpt-5.2', 'gpt-5-mini', 'gpt-4.1', 'gpt-4.1-mini']);
 	});
 
 	test('cleanup page shows reasoning effort selector for 5-series models', async ({ page }) => {

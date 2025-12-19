@@ -21,6 +21,12 @@
 		addLanguageToHistory
 	} from '$lib/languageHistory';
 	import { getLanguageCode } from '$lib/languageCode';
+	import {
+		MODELS,
+		DEFAULT_MODEL,
+		is5SeriesModel as checkIs5Series,
+		getReasoningEffortOptions
+	} from '$lib/models';
 
 	// Browser services for direct OpenAI calls
 	import { chunkBySize } from '$lib/services/chunker';
@@ -39,7 +45,7 @@
 
 	let documents = $state<DocumentListItem[]>([]);
 	let selectedDocId = $state('');
-	let model = $state('gpt-5-mini');
+	let model = $state(DEFAULT_MODEL);
 	let chunkSize = $state(4000);
 	let reasoningEffort = $state('medium');
 	let contextAware = $state(true);
@@ -98,29 +104,10 @@
 	let markdownDocuments = $derived(documents.filter((doc) => doc.type === 'markdown'));
 
 	// Check if the selected model is a 5-series model (supports reasoning effort)
-	let is5SeriesModel = $derived(model.startsWith('gpt-5'));
+	let is5SeriesModel = $derived(checkIs5Series(model));
 
-	// Check if the model is GPT-5.1 family (supports "none", not "minimal")
-	let isGpt51Model = $derived(/gpt-5\.1/.test(model));
-
-	// Get reasoning effort options based on model type
-	// GPT-5.1: None, Low, Medium, High
-	// GPT-5/5-mini/5-nano: Minimal, Low, Medium, High
-	let reasoningEffortOptions = $derived(
-		isGpt51Model
-			? [
-					{ value: 'none', label: 'None' },
-					{ value: 'low', label: 'Low' },
-					{ value: 'medium', label: 'Medium' },
-					{ value: 'high', label: 'High' }
-				]
-			: [
-					{ value: 'minimal', label: 'Minimal' },
-					{ value: 'low', label: 'Low' },
-					{ value: 'medium', label: 'Medium' },
-					{ value: 'high', label: 'High' }
-				]
-	);
+	// Get reasoning effort options based on model type (from centralized config)
+	let reasoningEffortOptions = $derived(getReasoningEffortOptions(model) || []);
 
 	// Get the selected document info (not full document with content)
 	let selectedDocInfo = $derived(documents.find((doc) => doc.id === selectedDocId));
@@ -386,10 +373,9 @@
 					disabled={isTranslating}
 					class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
 				>
-					<option value="gpt-5.1">gpt-5.1</option>
-					<option value="gpt-5-mini">gpt-5-mini</option>
-					<option value="gpt-4.1">gpt-4.1</option>
-					<option value="gpt-4.1-mini">gpt-4.1-mini</option>
+					{#each MODELS as m (m.id)}
+						<option value={m.id}>{m.label}</option>
+					{/each}
 				</select>
 			</div>
 			<div>

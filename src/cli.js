@@ -1,10 +1,12 @@
+import { DEFAULT_MODEL } from './models.js';
+
 export function parseCliArgs(args) {
   const cliArgs = args.slice(2);
 
   let inputFile = null;
   let outputDir = 'output/';
   let chunkSize = 4000;
-  let model = 'gpt-5-mini';
+  let model = DEFAULT_MODEL;
   let reasoningEffort = 'medium';
   let rectify = false;
   let pdfToMd = false;

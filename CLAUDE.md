@@ -338,11 +338,75 @@ The rectifier in `src/rectifier.js` uses a specialized system prompt emphasizing
 
 ## Important Notes
 
-- **GPT-5 models**: gpt-5 and gpt-5-mini are real, valid models. Never question their availability.
-- **Default model**: Currently `gpt-5-mini` (changed from original default of `gpt-5`)
+- **GPT-5 models**: gpt-5.2 and gpt-5-mini are real, valid models. Never question their availability.
+- **Default model**: Currently `gpt-5-mini`
 - **Model-specific parameters**: GPT-5 models require `verbosity` and `reasoning_effort` parameters in API calls
 - **ES modules**: All imports must include `.js` extension
-- **Timing**: GPT-5 models are slower (~20-25s per chunk) due to extended reasoning; GPT-4o is faster (~3-5s per chunk)
+- **Timing**: GPT-5 models are slower (~20-25s per chunk) due to extended reasoning; GPT-4.1 is faster (~3-5s per chunk)
+
+## Model Configuration (Centralized)
+
+Models are configured in a **single source of truth** for easy updates:
+
+**CLI Tool:** `src/models.js`
+**Web App:** `web-app/src/lib/models.ts`
+
+### Current Models
+
+| Model | Series | Default Reasoning Effort | Supported Efforts |
+|-------|--------|-------------------------|-------------------|
+| gpt-5.2 | 5 | none | none, low, medium, high |
+| gpt-5-mini | 5 | medium | minimal, low, medium, high |
+| gpt-4.1 | 4 | N/A | N/A |
+| gpt-4.1-mini | 4 | N/A | N/A |
+
+### How to Add or Update Models
+
+1. **Edit the MODELS array** in both files:
+
+   ```javascript
+   // src/models.js (CLI) or web-app/src/lib/models.ts (Web App)
+   export const MODELS = [
+     {
+       id: 'gpt-5.2',           // API model name
+       label: 'gpt-5.2',        // Display label in UI
+       series: 5,               // Model series (4 or 5)
+       defaultReasoningEffort: 'none',  // Default for this model
+       supportedReasoningEfforts: ['none', 'low', 'medium', 'high']  // Valid options
+     },
+     // ... more models
+   ];
+   ```
+
+2. **Update DEFAULT_MODEL** if changing the default:
+   ```javascript
+   export const DEFAULT_MODEL = 'gpt-5-mini';
+   ```
+
+3. **Run tests** to verify:
+   ```bash
+   # CLI
+   npm test -- test/models.test.js
+
+   # Web App
+   cd web-app && npm run test:unit -- --run tests/unit/models.test.ts
+   ```
+
+4. **Update tests** that reference specific models (if model names changed)
+
+### Helper Functions Available
+
+- `is5SeriesModel(modelId)` - Check if model is GPT-5 series (uses reasoning effort)
+- `isGpt52Model(modelId)` - Check if model is GPT-5.2 family specifically
+- `getModelById(modelId)` - Get full model config by ID
+- `getReasoningEffortOptions(modelId)` - Get dropdown options for UI
+- `getValidReasoningEffort(modelId, requested)` - Convert/validate reasoning effort
+
+### Reasoning Effort Differences
+
+- **GPT-5.2**: Uses `none` as lowest level (default: `none`)
+- **GPT-5-mini**: Uses `minimal` as lowest level (default: `medium`)
+- The helper functions automatically convert between these when needed
 
 ## Rectification Architecture
 
