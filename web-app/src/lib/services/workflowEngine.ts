@@ -21,8 +21,10 @@ export interface PhaseCallbacks {
 }
 
 // Options for running the complete workflow
+// Either pdfBuffer OR markdownContent must be provided, not both
 export interface WorkflowOptions {
-	pdfBuffer: Uint8Array | ArrayBuffer;
+	pdfBuffer?: Uint8Array | ArrayBuffer;
+	markdownContent?: string;
 	apiKey: string;
 	cleanupSettings: CleanupSettings;
 	translationSettings: TranslationSettings;
@@ -76,15 +78,25 @@ function assembleRectified(
 
 /**
  * Runs the complete workflow: PDF → Markdown → Cleanup → Translation
+ * For markdown input, skips the convert phase and starts with cleanup.
  */
 export async function runWorkflow(options: WorkflowOptions): Promise<WorkflowResult> {
 	const {
 		pdfBuffer,
+		markdownContent,
 		apiKey,
 		cleanupSettings,
 		translationSettings,
 		callbacks
 	} = options;
+
+	// Validate input: must provide exactly one of pdfBuffer or markdownContent
+	if (!pdfBuffer && !markdownContent) {
+		throw new Error('Either pdfBuffer or markdownContent must be provided');
+	}
+	if (pdfBuffer && markdownContent) {
+		throw new Error('Cannot provide both pdfBuffer and markdownContent');
+	}
 
 	const {
 		onPhaseStart,
@@ -98,20 +110,28 @@ export async function runWorkflow(options: WorkflowOptions): Promise<WorkflowRes
 	let japaneseOnly = '';
 	let bilingual = '';
 
-	// ============================================
-	// Phase 1: Convert PDF to Markdown
-	// ============================================
-	try {
-		onPhaseStart?.('convert');
+	// Determine if we're starting from markdown (skip convert phase)
+	const isMarkdownInput = !!markdownContent;
 
-		const converter = await createPdfConverter();
-		markdown = await converter.convertToMarkdown(pdfBuffer);
+	// ============================================
+	// Phase 1: Convert PDF to Markdown (skip if markdown input)
+	// ============================================
+	if (!isMarkdownInput) {
+		try {
+			onPhaseStart?.('convert');
 
-		onPhaseComplete?.('convert', markdown);
-	} catch (error) {
-		const err = error instanceof Error ? error : new Error(String(error));
-		onPhaseError?.('convert', err);
-		throw err;
+			const converter = await createPdfConverter();
+			markdown = await converter.convertToMarkdown(pdfBuffer!);
+
+			onPhaseComplete?.('convert', markdown);
+		} catch (error) {
+			const err = error instanceof Error ? error : new Error(String(error));
+			onPhaseError?.('convert', err);
+			throw err;
+		}
+	} else {
+		// Use provided markdown content directly
+		markdown = markdownContent!;
 	}
 
 	// ============================================

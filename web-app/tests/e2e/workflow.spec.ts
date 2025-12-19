@@ -14,7 +14,7 @@ test.describe('One Step Translation Page', () => {
 		await expect(page.locator('h1')).toContainText('One Step Translation');
 
 		// Check all step sections are visible
-		await expect(page.getByText('Upload PDF')).toBeVisible();
+		await expect(page.getByText('Upload Document')).toBeVisible();
 		await expect(page.getByText('Cleanup Settings')).toBeVisible();
 		await expect(page.getByText('Translation Settings')).toBeVisible();
 
@@ -54,7 +54,7 @@ test.describe('One Step Translation Page', () => {
 
 		// Check for the drop zone text
 		await expect(page.getByText(/click to upload/i)).toBeVisible();
-		await expect(page.getByText(/pdf files only/i)).toBeVisible();
+		await expect(page.getByText(/PDF or Markdown/i)).toBeVisible();
 	});
 
 	test('shows cleanup settings with model, chunk size, and reasoning effort', async ({ page }) => {
@@ -268,5 +268,113 @@ test.describe('Target Language and Tone Input', () => {
 		const dropdown = page.getByTestId('language-history-dropdown');
 		await expect(dropdown.getByRole('button', { name: 'Spanish' })).toBeVisible();
 		await expect(dropdown.getByRole('button', { name: 'German' })).toBeVisible();
+	});
+});
+
+test.describe('Markdown File Upload Support', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto('/');
+		await clearAllStorage(page);
+	});
+
+	test('file input accepts both PDF and markdown files', async ({ page }) => {
+		await page.goto('/workflow');
+
+		// The file input should accept .pdf and .md files
+		const fileInput = page.locator('input[type="file"]');
+		const acceptAttr = await fileInput.getAttribute('accept');
+		expect(acceptAttr).toContain('.pdf');
+		expect(acceptAttr).toContain('.md');
+	});
+
+	test('upload section title says "Upload Document" instead of "Upload PDF"', async ({ page }) => {
+		await page.goto('/workflow');
+
+		// Should say "Upload Document" to reflect both file types
+		await expect(page.getByText('Upload Document')).toBeVisible();
+		// Should NOT say "PDF files only" anymore
+		await expect(page.getByText('PDF files only')).not.toBeVisible();
+	});
+
+	test('upload section shows supported file types', async ({ page }) => {
+		await page.goto('/workflow');
+
+		// Should show that both PDF and markdown are accepted
+		await expect(page.getByText(/PDF or Markdown/i)).toBeVisible();
+	});
+
+	test('does not show error when markdown file is dropped', async ({ page }) => {
+		await page.goto('/workflow');
+
+		// Create a fake markdown file and simulate drag-drop
+		// This is done by directly setting file via the input
+		const fileInput = page.locator('input[type="file"]');
+
+		// Create a test markdown file path
+		await fileInput.setInputFiles({
+			name: 'test-document.md',
+			mimeType: 'text/markdown',
+			buffer: Buffer.from('# Test Document\n\nThis is test content.')
+		});
+
+		// Should NOT show an error
+		await expect(page.locator('.bg-red-50')).not.toBeVisible();
+
+		// File name should be displayed
+		await expect(page.getByText('test-document.md')).toBeVisible();
+	});
+
+	test('shows 2 phases in phase indicator when markdown file is selected', async ({ page }) => {
+		await page.goto('/workflow');
+		await setApiKey(page);
+
+		// Upload a markdown file
+		const fileInput = page.locator('input[type="file"]');
+		await fileInput.setInputFiles({
+			name: 'test.md',
+			mimeType: 'text/markdown',
+			buffer: Buffer.from('# Test')
+		});
+
+		// Enter target language to enable the start button
+		const languageInput = page.getByTestId('target-language-input');
+		await languageInput.fill('Japanese');
+
+		// Click start button to begin workflow (phases will show)
+		const startButton = page.getByRole('button', { name: /start one step translation/i });
+		await startButton.click();
+
+		// Should show only 2 phases (Cleanup, Translate) - NOT Convert
+		// Use specific test IDs in the phase indicator
+		await expect(page.getByTestId('phase-cleanup')).toBeVisible();
+		await expect(page.getByTestId('phase-translate')).toBeVisible();
+		// Convert phase should NOT be visible when starting from markdown
+		await expect(page.getByTestId('phase-convert')).not.toBeVisible();
+	});
+
+	test('shows 3 phases in phase indicator when PDF file is selected', async ({ page }) => {
+		await page.goto('/workflow');
+		await setApiKey(page);
+
+		// Upload a PDF file
+		const fileInput = page.locator('input[type="file"]');
+		await fileInput.setInputFiles({
+			name: 'test.pdf',
+			mimeType: 'application/pdf',
+			buffer: Buffer.from('%PDF-1.4 fake pdf')
+		});
+
+		// Enter target language
+		const languageInput = page.getByTestId('target-language-input');
+		await languageInput.fill('Japanese');
+
+		// Click start
+		const startButton = page.getByRole('button', { name: /start one step translation/i });
+		await startButton.click();
+
+		// Should show all 3 phases for PDF - use specific test IDs
+		await expect(page.getByTestId('phase-convert')).toBeVisible();
+		await expect(page.getByTestId('phase-cleanup')).toBeVisible();
+		await expect(page.getByTestId('phase-translate')).toBeVisible();
 	});
 });

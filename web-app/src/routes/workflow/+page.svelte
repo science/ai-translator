@@ -23,6 +23,7 @@
 		type CleanupSettings,
 		type TranslationSettings,
 		createWorkflowState,
+		createWorkflowPhases,
 		startWorkflow,
 		updatePhaseStatus,
 		isWorkflowComplete,
@@ -41,9 +42,25 @@
 		getReasoningEffortOptions
 	} from '$lib/models';
 
+	// File type detection
+	type UploadedFileType = 'pdf' | 'markdown';
+
+	function getFileType(file: File): UploadedFileType {
+		if (file.type === 'application/pdf') return 'pdf';
+		const ext = file.name.split('.').pop()?.toLowerCase();
+		if (ext === 'pdf') return 'pdf';
+		return 'markdown'; // .md, .markdown, .txt all treated as markdown
+	}
+
+	function isAcceptedFile(file: File): boolean {
+		const ext = file.name.split('.').pop()?.toLowerCase();
+		return file.type === 'application/pdf' || ext === 'pdf' || ext === 'md' || ext === 'markdown';
+	}
+
 	// State
 	let workflowState = $state<WorkflowState>(createWorkflowState());
 	let selectedFile = $state<File | null>(null);
+	let selectedFileType = $state<UploadedFileType | null>(null);
 	let isDragging = $state(false);
 	let error = $state('');
 	let currentProgress = $state<ProgressState>(resetProgress());
@@ -130,11 +147,12 @@
 		const files = e.dataTransfer?.files;
 		if (files && files.length > 0) {
 			const file = files[0];
-			if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+			if (isAcceptedFile(file)) {
 				selectedFile = file;
+				selectedFileType = getFileType(file);
 				error = '';
 			} else {
-				error = 'Please select a PDF file';
+				error = 'Please select a PDF or Markdown file';
 			}
 		}
 	}
@@ -143,17 +161,18 @@
 		const input = e.target as HTMLInputElement;
 		const file = input.files?.[0];
 		if (file) {
-			if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+			if (isAcceptedFile(file)) {
 				selectedFile = file;
+				selectedFileType = getFileType(file);
 				error = '';
 			} else {
-				error = 'Please select a PDF file';
+				error = 'Please select a PDF or Markdown file';
 			}
 		}
 	}
 
 	async function handleStartWorkflow() {
-		if (!selectedFile) return;
+		if (!selectedFile || !selectedFileType) return;
 
 		// Get API key
 		const apiKey = localStorage.getItem('openai_api_key');
@@ -162,9 +181,18 @@
 			return;
 		}
 
-		// Reset state
+		// Determine if we're skipping the convert phase
+		const isMarkdownInput = selectedFileType === 'markdown';
+
+		// Reset state with correct phases
 		error = '';
 		workflowResult = null;
+
+		// Update workflow state with correct phases based on file type
+		workflowState = {
+			...createWorkflowState(),
+			phases: createWorkflowPhases(isMarkdownInput)
+		};
 		workflowState = startWorkflow(workflowState);
 
 		const cleanupSettings: CleanupSettings = {
@@ -182,15 +210,34 @@
 		};
 
 		try {
-			// Read file as ArrayBuffer
-			const pdfBuffer = await selectedFile.arrayBuffer();
+			// Read file based on type
+			let workflowOptions: Parameters<typeof runWorkflow>[0];
 
-			// Run the workflow
+			if (isMarkdownInput) {
+				// Read markdown file as text
+				const markdownContent = await selectedFile.text();
+				workflowOptions = {
+					markdownContent,
+					apiKey,
+					cleanupSettings,
+					translationSettings,
+					callbacks: {}
+				};
+			} else {
+				// Read PDF file as ArrayBuffer
+				const pdfBuffer = await selectedFile.arrayBuffer();
+				workflowOptions = {
+					pdfBuffer: new Uint8Array(pdfBuffer),
+					apiKey,
+					cleanupSettings,
+					translationSettings,
+					callbacks: {}
+				};
+			}
+
+			// Run the workflow with appropriate callbacks
 			const result = await runWorkflow({
-				pdfBuffer: new Uint8Array(pdfBuffer),
-				apiKey,
-				cleanupSettings,
-				translationSettings,
+				...workflowOptions,
 				callbacks: {
 					onPhaseStart: (phaseId) => {
 						workflowState = updatePhaseStatus(workflowState, phaseId, 'in_progress');
@@ -256,20 +303,25 @@
 			languageHistory = getLanguageHistory();
 
 			// Save all output documents
-			const baseName = selectedFile.name.replace(/\.pdf$/i, '');
+			const baseName = selectedFile.name.replace(/\.(pdf|md|markdown)$/i, '');
 			const langCode = getLanguageCode(targetLanguage);
 
-			// Save converted markdown
-			const convertedDoc: StoredDocument = {
-				id: generateDocumentId(),
-				name: `${baseName}-converted.md`,
-				type: 'markdown',
-				content: result.markdown,
-				size: new Blob([result.markdown]).size,
-				uploadedAt: new Date().toISOString(),
-				phase: 'converted'
-			};
-			await saveDocument(convertedDoc);
+			let sourceDocId: string | undefined;
+
+			// Only save converted markdown for PDF input (not for markdown input)
+			if (!isMarkdownInput) {
+				const convertedDoc: StoredDocument = {
+					id: generateDocumentId(),
+					name: `${baseName}-converted.md`,
+					type: 'markdown',
+					content: result.markdown,
+					size: new Blob([result.markdown]).size,
+					uploadedAt: new Date().toISOString(),
+					phase: 'converted'
+				};
+				await saveDocument(convertedDoc);
+				sourceDocId = convertedDoc.id;
+			}
 
 			// Save cleaned markdown
 			const cleanedDoc: StoredDocument = {
@@ -280,7 +332,7 @@
 				size: new Blob([result.cleaned]).size,
 				uploadedAt: new Date().toISOString(),
 				phase: 'cleaned',
-				sourceDocumentId: convertedDoc.id
+				...(sourceDocId ? { sourceDocumentId: sourceDocId } : {})
 			};
 			await saveDocument(cleanedDoc);
 
@@ -321,6 +373,7 @@
 	function handleStartOver() {
 		workflowState = createWorkflowState();
 		selectedFile = null;
+		selectedFileType = null;
 		workflowResult = null;
 		currentProgress = resetProgress();
 		error = '';
@@ -347,11 +400,11 @@
 	<p class="text-gray-600 mb-6">Convert PDF to your target language in one automated process</p>
 
 	{#if !showResults}
-		<!-- Step 1: Upload PDF -->
+		<!-- Step 1: Upload Document -->
 		<div class="bg-white rounded-lg border border-gray-200 p-6 mb-6">
 			<h2 class="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
 				<span class="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-sm font-bold">1</span>
-				Upload PDF
+				Upload Document
 			</h2>
 
 			<div
@@ -371,7 +424,7 @@
 				<input
 					type="file"
 					id="file-input"
-					accept=".pdf,application/pdf"
+					accept=".pdf,.md,.markdown,application/pdf,text/markdown"
 					onchange={handleFileSelect}
 					class="hidden"
 					disabled={workflowState.isRunning}
@@ -389,7 +442,7 @@
 					<p class="mt-2 text-sm text-gray-600">
 						<span class="font-semibold text-blue-600">Click to upload</span> or drag and drop
 					</p>
-					<p class="text-xs text-gray-500">PDF files only</p>
+					<p class="text-xs text-gray-500">PDF or Markdown files</p>
 				{/if}
 			</div>
 		</div>
@@ -615,16 +668,19 @@
 
 	{#if showResults && workflowResult}
 		{@const langCode = getLanguageCode(targetLanguage)}
+		{@const isMarkdownInput = selectedFileType === 'markdown'}
+		{@const baseName = selectedFile?.name.replace(/\.(pdf|md|markdown)$/i, '')}
 		<!-- Results Section -->
 		<div class="mt-6 bg-white rounded-lg border border-gray-200 p-6">
 			<h2 class="text-lg font-semibold text-gray-900 mb-4">Output Documents</h2>
 
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
 				{#each [
-					{ label: 'Converted Markdown', key: 'markdown', filename: `${selectedFile?.name.replace(/\.pdf$/i, '')}-converted.md` },
-					{ label: 'Cleaned Markdown', key: 'cleaned', filename: `${selectedFile?.name.replace(/\.pdf$/i, '')}-cleaned.md` },
-					{ label: 'Target Language Only', key: 'japaneseOnly', filename: `${selectedFile?.name.replace(/\.pdf$/i, '')}-${langCode}.md` },
-					{ label: 'Bilingual', key: 'bilingual', filename: `${selectedFile?.name.replace(/\.pdf$/i, '')}-bilingual.md` }
+					// Skip "Original/Converted Markdown" for markdown input since user already has the source
+					...(isMarkdownInput ? [] : [{ label: 'Converted Markdown', key: 'markdown', filename: `${baseName}-converted.md` }]),
+					{ label: 'Cleaned Markdown', key: 'cleaned', filename: `${baseName}-cleaned.md` },
+					{ label: 'Target Language Only', key: 'japaneseOnly', filename: `${baseName}-${langCode}.md` },
+					{ label: 'Bilingual', key: 'bilingual', filename: `${baseName}-bilingual.md` }
 				] as output}
 					<div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
 						<span class="text-sm font-medium text-gray-700">{output.label}</span>

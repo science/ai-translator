@@ -106,7 +106,7 @@ describe('Workflow Engine', () => {
 		});
 	});
 
-	describe('runWorkflow', () => {
+	describe('runWorkflow with PDF input', () => {
 		it('executes all three phases in order', async () => {
 			const onPhaseStart = vi.fn();
 			const onPhaseComplete = vi.fn();
@@ -436,6 +436,124 @@ describe('Workflow Engine', () => {
 
 			expect(result.markdown).toBe(mockMarkdown);
 			expect(result.cleaned).toBe(mockCleanedMarkdown);
+		});
+	});
+
+	describe('runWorkflow with markdown input', () => {
+		it('skips convert phase when markdownContent is provided', async () => {
+			const onPhaseStart = vi.fn();
+			const onPhaseComplete = vi.fn();
+
+			const options: WorkflowOptions = {
+				markdownContent: mockMarkdown,
+				apiKey: 'test-key',
+				cleanupSettings: defaultCleanupSettings,
+				translationSettings: defaultTranslationSettings,
+				callbacks: {
+					onPhaseStart,
+					onPhaseComplete
+				}
+			};
+
+			await runWorkflow(options);
+
+			// Verify convert phase was NOT called
+			expect(onPhaseStart).not.toHaveBeenCalledWith('convert');
+			expect(onPhaseComplete).not.toHaveBeenCalledWith('convert', expect.anything());
+
+			// Verify only cleanup and translate phases were called
+			expect(onPhaseStart).toHaveBeenCalledTimes(2);
+			expect(onPhaseStart).toHaveBeenNthCalledWith(1, 'cleanup');
+			expect(onPhaseStart).toHaveBeenNthCalledWith(2, 'translate');
+		});
+
+		it('does not call PDF converter when markdownContent is provided', async () => {
+			const options: WorkflowOptions = {
+				markdownContent: mockMarkdown,
+				apiKey: 'test-key',
+				cleanupSettings: defaultCleanupSettings,
+				translationSettings: defaultTranslationSettings,
+				callbacks: {}
+			};
+
+			await runWorkflow(options);
+
+			expect(createPdfConverter).not.toHaveBeenCalled();
+		});
+
+		it('uses provided markdown content for cleanup phase', async () => {
+			const customMarkdown = '# Custom Input\n\nThis is custom markdown content.';
+
+			const options: WorkflowOptions = {
+				markdownContent: customMarkdown,
+				apiKey: 'test-key',
+				cleanupSettings: defaultCleanupSettings,
+				translationSettings: defaultTranslationSettings,
+				callbacks: {}
+			};
+
+			await runWorkflow(options);
+
+			// Verify chunker received the markdown content
+			expect(chunkBySize).toHaveBeenCalledWith(customMarkdown, defaultCleanupSettings.chunkSize);
+		});
+
+		it('returns markdown field with original input for markdown workflows', async () => {
+			const customMarkdown = '# Original Input\n\nOriginal content here.';
+
+			const options: WorkflowOptions = {
+				markdownContent: customMarkdown,
+				apiKey: 'test-key',
+				cleanupSettings: defaultCleanupSettings,
+				translationSettings: defaultTranslationSettings,
+				callbacks: {}
+			};
+
+			const result = await runWorkflow(options);
+
+			// markdown field should contain the original input (not converted)
+			expect(result.markdown).toBe(customMarkdown);
+		});
+
+		it('returns all four output fields for markdown input', async () => {
+			const options: WorkflowOptions = {
+				markdownContent: mockMarkdown,
+				apiKey: 'test-key',
+				cleanupSettings: defaultCleanupSettings,
+				translationSettings: defaultTranslationSettings,
+				callbacks: {}
+			};
+
+			const result = await runWorkflow(options);
+
+			expect(result.markdown).toBeDefined();
+			expect(result.cleaned).toBeDefined();
+			expect(result.japaneseOnly).toBeDefined();
+			expect(result.bilingual).toBeDefined();
+		});
+
+		it('throws error when neither pdfBuffer nor markdownContent is provided', async () => {
+			const options: WorkflowOptions = {
+				apiKey: 'test-key',
+				cleanupSettings: defaultCleanupSettings,
+				translationSettings: defaultTranslationSettings,
+				callbacks: {}
+			};
+
+			await expect(runWorkflow(options)).rejects.toThrow('Either pdfBuffer or markdownContent must be provided');
+		});
+
+		it('throws error when both pdfBuffer and markdownContent are provided', async () => {
+			const options: WorkflowOptions = {
+				pdfBuffer: mockPdfBuffer,
+				markdownContent: mockMarkdown,
+				apiKey: 'test-key',
+				cleanupSettings: defaultCleanupSettings,
+				translationSettings: defaultTranslationSettings,
+				callbacks: {}
+			};
+
+			await expect(runWorkflow(options)).rejects.toThrow('Cannot provide both pdfBuffer and markdownContent');
 		});
 	});
 });
