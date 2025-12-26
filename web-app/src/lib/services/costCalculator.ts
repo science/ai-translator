@@ -4,6 +4,7 @@
  */
 
 import { encode, encodeChat } from 'gpt-tokenizer';
+import { chunkBySize } from './chunker';
 
 // Chat message overhead tokens (role tags, separators, etc.)
 // This is an approximation based on OpenAI's token counting documentation
@@ -25,6 +26,16 @@ export interface CostEstimate {
 	estimatedInputTokens: number;
 	estimatedOutputTokens: number;
 	estimatedCostUsd: number;
+}
+
+/**
+ * Combined cost estimate for a full workflow (cleanup + translation).
+ */
+export interface WorkflowCostEstimate {
+	cleanup: CostEstimate;
+	translate: CostEstimate;
+	totalTokens: number;
+	totalCostUsd: number;
 }
 
 /**
@@ -166,4 +177,47 @@ export function formatCost(costUsd: number): string {
  */
 export function formatTokens(tokens: number): string {
 	return tokens.toLocaleString();
+}
+
+/**
+ * Estimate total workflow cost (cleanup + translation phases).
+ * Used for One Step Translation cost estimation.
+ */
+export function estimateWorkflowCost(
+	content: string,
+	cleanupModel: string,
+	translateModel: string,
+	chunkSize: number
+): WorkflowCostEstimate {
+	if (!content) {
+		return {
+			cleanup: { estimatedInputTokens: 0, estimatedOutputTokens: 0, estimatedCostUsd: 0 },
+			translate: { estimatedInputTokens: 0, estimatedOutputTokens: 0, estimatedCostUsd: 0 },
+			totalTokens: 0,
+			totalCostUsd: 0
+		};
+	}
+
+	// Chunk the content
+	const chunks = chunkBySize(content, chunkSize);
+	const chunkContents = chunks.map(c => c.content);
+
+	// Estimate cleanup cost
+	const cleanupEstimate = estimateJobCost(chunkContents, cleanupModel, 'cleanup');
+
+	// Estimate translation cost
+	const translateEstimate = estimateJobCost(chunkContents, translateModel, 'translate');
+
+	// Calculate totals
+	const totalTokens =
+		cleanupEstimate.estimatedInputTokens + cleanupEstimate.estimatedOutputTokens +
+		translateEstimate.estimatedInputTokens + translateEstimate.estimatedOutputTokens;
+	const totalCostUsd = cleanupEstimate.estimatedCostUsd + translateEstimate.estimatedCostUsd;
+
+	return {
+		cleanup: cleanupEstimate,
+		translate: translateEstimate,
+		totalTokens,
+		totalCostUsd
+	};
 }

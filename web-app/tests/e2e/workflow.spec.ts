@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { clearAllStorage, setApiKey } from './helpers';
+import { clearAllStorage, setApiKey, addDocumentToIndexedDB, mockOpenAICompletion } from './helpers';
 
 test.describe('One Step Translation Page', () => {
 	test.beforeEach(async ({ page }) => {
@@ -374,6 +374,156 @@ test.describe('Markdown File Upload Support', () => {
 
 		// Should show all 3 phases for PDF - use specific test IDs
 		await expect(page.getByTestId('phase-convert')).toBeVisible();
+		await expect(page.getByTestId('phase-cleanup')).toBeVisible();
+		await expect(page.getByTestId('phase-translate')).toBeVisible();
+	});
+});
+
+test.describe('Document Selection in Workflow', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto('/');
+		await clearAllStorage(page);
+	});
+
+	test('shows document selection dropdown', async ({ page }) => {
+		await page.goto('/workflow');
+
+		// Should have a document selection section
+		await expect(page.getByText(/select from existing documents/i)).toBeVisible();
+		await expect(page.getByTestId('document-select')).toBeVisible();
+	});
+
+	test('dropdown shows uploaded markdown and PDF documents', async ({ page }) => {
+		// Add documents to IndexedDB
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_1',
+			name: 'test-book.md',
+			type: 'markdown',
+			content: '# Test Book\n\nContent here.',
+			size: 30,
+			uploadedAt: new Date().toISOString()
+		});
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_pdf_1',
+			name: 'another-book.pdf',
+			type: 'pdf',
+			content: '%PDF-1.4',
+			size: 1024,
+			uploadedAt: new Date().toISOString()
+		});
+
+		await page.goto('/workflow');
+
+		const select = page.getByTestId('document-select');
+		await expect(select).toBeVisible();
+
+		// Both documents should be in the dropdown (check option count and text content)
+		const options = select.locator('option');
+		await expect(options).toHaveCount(3); // "Choose a document..." + 2 docs
+		await expect(select).toContainText('test-book.md');
+		await expect(select).toContainText('another-book.pdf');
+	});
+
+	test('selecting markdown document shows cost estimate immediately', async ({ page }) => {
+		// Add a markdown document
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_1',
+			name: 'test-book.md',
+			type: 'markdown',
+			content: '# Test Book\n\nThis is test content for cost estimation.',
+			size: 50,
+			uploadedAt: new Date().toISOString()
+		});
+
+		await page.goto('/workflow');
+
+		// Select the markdown document
+		await page.getByTestId('document-select').selectOption('doc_md_1');
+
+		// Fill target language
+		await page.getByTestId('target-language-input').fill('Japanese');
+
+		// Cost estimate should appear immediately (no Convert step needed)
+		await expect(page.getByTestId('cost-estimate')).toBeVisible({ timeout: 5000 });
+		await expect(page.getByTestId('cost-estimate').getByText(/Combined/i)).toBeVisible();
+	});
+
+	test('selecting PDF document shows Convert & Estimate button', async ({ page }) => {
+		// Add a PDF document
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_pdf_1',
+			name: 'test-book.pdf',
+			type: 'pdf',
+			content: '%PDF-1.4',
+			size: 1024,
+			uploadedAt: new Date().toISOString()
+		});
+
+		await page.goto('/workflow');
+
+		// Select the PDF document
+		await page.getByTestId('document-select').selectOption('doc_pdf_1');
+
+		// Should show Convert & Estimate button instead of immediate estimate
+		await expect(page.getByRole('button', { name: /convert.*estimate/i })).toBeVisible();
+	});
+
+	test('file upload clears document selection', async ({ page }) => {
+		// Add a markdown document
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_1',
+			name: 'test-book.md',
+			type: 'markdown',
+			content: '# Test Book',
+			size: 11,
+			uploadedAt: new Date().toISOString()
+		});
+
+		await page.goto('/workflow');
+
+		// Select the document
+		await page.getByTestId('document-select').selectOption('doc_md_1');
+		await expect(page.getByTestId('document-select')).toHaveValue('doc_md_1');
+
+		// Upload a new file
+		const fileInput = page.locator('input[type="file"]');
+		await fileInput.setInputFiles({
+			name: 'new-file.md',
+			mimeType: 'text/markdown',
+			buffer: Buffer.from('# New File')
+		});
+
+		// Document selection should be cleared
+		await expect(page.getByTestId('document-select')).toHaveValue('');
+	});
+
+	test('markdown from selection skips convert phase', async ({ page }) => {
+		// Add a markdown document
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_1',
+			name: 'test-book.md',
+			type: 'markdown',
+			content: '# Test',
+			size: 6,
+			uploadedAt: new Date().toISOString()
+		});
+
+		await setApiKey(page);
+		await mockOpenAICompletion(page, '# テスト', { jsonWrap: true });
+
+		await page.goto('/workflow');
+
+		// Select markdown document
+		await page.getByTestId('document-select').selectOption('doc_md_1');
+		await page.getByTestId('target-language-input').fill('Japanese');
+
+		// Start workflow
+		const startButton = page.getByRole('button', { name: /start one step translation/i });
+		await startButton.click();
+
+		// Should NOT show convert phase
+		await expect(page.getByTestId('phase-convert')).not.toBeVisible();
+		// Should show cleanup and translate phases
 		await expect(page.getByTestId('phase-cleanup')).toBeVisible();
 		await expect(page.getByTestId('phase-translate')).toBeVisible();
 	});

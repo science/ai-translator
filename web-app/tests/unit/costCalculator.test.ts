@@ -4,8 +4,10 @@ import {
 	estimateChatTokens,
 	calculateCost,
 	estimateJobCost,
+	estimateWorkflowCost,
 	type TokenUsage,
-	type CostEstimate
+	type CostEstimate,
+	type WorkflowCostEstimate
 } from '$lib/services/costCalculator';
 
 describe('costCalculator', () => {
@@ -181,6 +183,75 @@ describe('costCalculator', () => {
 			expect(estimate.estimatedInputTokens).toBe(1000);
 			expect(estimate.estimatedOutputTokens).toBe(1500);
 			expect(estimate.estimatedCostUsd).toBe(0.05);
+		});
+	});
+
+	describe('estimateWorkflowCost', () => {
+		const sampleContent = '# Test Document\n\nThis is sample content for testing workflow cost estimation. It has enough text to generate meaningful token counts.';
+
+		it('returns combined estimate for cleanup and translation phases', () => {
+			const estimate = estimateWorkflowCost(sampleContent, 'gpt-5-mini', 'gpt-5-mini', 4000);
+			expect(estimate.cleanup.estimatedCostUsd).toBeGreaterThan(0);
+			expect(estimate.translate.estimatedCostUsd).toBeGreaterThan(0);
+			expect(estimate.totalCostUsd).toBeGreaterThan(0);
+		});
+
+		it('total cost equals sum of cleanup and translation costs', () => {
+			const estimate = estimateWorkflowCost(sampleContent, 'gpt-5-mini', 'gpt-5-mini', 4000);
+			const expectedTotal = estimate.cleanup.estimatedCostUsd + estimate.translate.estimatedCostUsd;
+			expect(estimate.totalCostUsd).toBeCloseTo(expectedTotal, 5);
+		});
+
+		it('returns zero estimates for empty content', () => {
+			const estimate = estimateWorkflowCost('', 'gpt-5-mini', 'gpt-5-mini', 4000);
+			expect(estimate.cleanup.estimatedCostUsd).toBe(0);
+			expect(estimate.translate.estimatedCostUsd).toBe(0);
+			expect(estimate.totalCostUsd).toBe(0);
+		});
+
+		it('uses different models for each phase', () => {
+			// gpt-5.2 is more expensive than gpt-5-mini
+			const expensiveCleanup = estimateWorkflowCost(sampleContent, 'gpt-5.2', 'gpt-5-mini', 4000);
+			const cheapCleanup = estimateWorkflowCost(sampleContent, 'gpt-5-mini', 'gpt-5-mini', 4000);
+			expect(expensiveCleanup.cleanup.estimatedCostUsd).toBeGreaterThan(cheapCleanup.cleanup.estimatedCostUsd);
+		});
+
+		it('includes total token count', () => {
+			const estimate = estimateWorkflowCost(sampleContent, 'gpt-5-mini', 'gpt-5-mini', 4000);
+			const expectedTokens =
+				estimate.cleanup.estimatedInputTokens + estimate.cleanup.estimatedOutputTokens +
+				estimate.translate.estimatedInputTokens + estimate.translate.estimatedOutputTokens;
+			expect(estimate.totalTokens).toBe(expectedTokens);
+		});
+
+		it('respects chunk size parameter', () => {
+			const smallChunks = estimateWorkflowCost(sampleContent, 'gpt-5-mini', 'gpt-5-mini', 50);
+			const largeChunks = estimateWorkflowCost(sampleContent, 'gpt-5-mini', 'gpt-5-mini', 4000);
+			// Smaller chunks = more chunks = more system prompt overhead = higher cost
+			expect(smallChunks.totalCostUsd).toBeGreaterThan(largeChunks.totalCostUsd);
+		});
+	});
+
+	describe('WorkflowCostEstimate type', () => {
+		it('has required properties', () => {
+			const estimate: WorkflowCostEstimate = {
+				cleanup: {
+					estimatedInputTokens: 500,
+					estimatedOutputTokens: 500,
+					estimatedCostUsd: 0.01
+				},
+				translate: {
+					estimatedInputTokens: 500,
+					estimatedOutputTokens: 750,
+					estimatedCostUsd: 0.02
+				},
+				totalTokens: 2250,
+				totalCostUsd: 0.03
+			};
+			expect(estimate.cleanup.estimatedCostUsd).toBe(0.01);
+			expect(estimate.translate.estimatedCostUsd).toBe(0.02);
+			expect(estimate.totalCostUsd).toBe(0.03);
+			expect(estimate.totalTokens).toBe(2250);
 		});
 	});
 });

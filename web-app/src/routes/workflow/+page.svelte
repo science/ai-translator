@@ -4,7 +4,9 @@
 	import {
 		type StoredDocument,
 		saveDocument,
-		generateDocumentId
+		generateDocumentId,
+		getAllDocuments,
+		getDocument
 	} from '$lib/storage';
 	import {
 		type ProgressState,
@@ -42,7 +44,7 @@
 		is5SeriesModel as checkIs5Series,
 		getReasoningEffortOptions
 	} from '$lib/models';
-	import { calculateCost, type TokenUsage } from '$lib/services/costCalculator';
+	import { calculateCost, estimateWorkflowCost, type TokenUsage, type WorkflowCostEstimate } from '$lib/services/costCalculator';
 
 	// File type detection
 	type UploadedFileType = 'pdf' | 'markdown';
@@ -84,10 +86,50 @@
 	let languageTouched = $state(false);
 	let showLanguageDropdown = $state(false);
 
-	// Derived state - now requires target language
-	let canStartWorkflow = $derived(selectedFile !== null && !workflowState.isRunning && !!targetLanguage.trim());
+	// Document selection state
+	interface DocumentListItem {
+		id: string;
+		name: string;
+		type: 'pdf' | 'markdown' | 'text';
+		size: number;
+		uploadedAt: string;
+	}
+	let documents = $state<DocumentListItem[]>([]);
+	let selectedDocId = $state('');
+	let selectedDocContent = $state<string | null>(null);
+
+	// Cost estimation state
+	let costEstimate = $state<WorkflowCostEstimate | null>(null);
+	let isConverting = $state(false);
+
+	// Derived state - now requires target language and either file or selected document
+	let hasDocumentInput = $derived(selectedFile !== null || selectedDocId !== '');
+	let canStartWorkflow = $derived(hasDocumentInput && !workflowState.isRunning && !!targetLanguage.trim());
 	let showProgress = $derived(workflowState.isRunning || isWorkflowComplete(workflowState));
 	let showResults = $derived(isWorkflowComplete(workflowState) && workflowResult !== null);
+
+	// Document type detection for selected document
+	let selectedDocInfo = $derived(documents.find(d => d.id === selectedDocId));
+	let selectedDocType = $derived<UploadedFileType | null>(
+		selectedFile ? getFileType(selectedFile) :
+		selectedDocInfo ? (selectedDocInfo.type === 'pdf' ? 'pdf' : 'markdown') :
+		null
+	);
+	let needsConversion = $derived(selectedDocType === 'pdf');
+	let canShowEstimate = $derived(
+		hasDocumentInput &&
+		!!targetLanguage.trim() &&
+		(selectedDocType === 'markdown' || selectedDocContent !== null)
+	);
+	let showConvertButton = $derived(
+		needsConversion &&
+		!costEstimate &&
+		!isConverting &&
+		selectedDocId !== '' // Only for selected documents, not file uploads
+	);
+
+	// Filter documents to show PDF and markdown only
+	let selectableDocuments = $derived(documents.filter(d => d.type === 'pdf' || d.type === 'markdown'));
 
 	// Check if the selected model is a 5-series model (supports reasoning effort)
 	let isCleanup5Series = $derived(checkIs5Series(cleanupModel));
@@ -97,8 +139,72 @@
 	let cleanupReasoningOptions = $derived(getReasoningEffortOptions(cleanupModel) || []);
 	let translationReasoningOptions = $derived(getReasoningEffortOptions(translationModel) || []);
 
+	async function loadDocuments() {
+		const docs = await getAllDocuments();
+		documents = docs.map((doc) => ({
+			id: doc.id,
+			name: doc.name,
+			type: doc.type,
+			size: doc.size,
+			uploadedAt: doc.uploadedAt
+		}));
+	}
+
+	async function handleDocumentSelect(event: Event) {
+		const select = event.target as HTMLSelectElement;
+		const docId = select.value;
+
+		// Clear file selection when document is selected
+		if (docId) {
+			selectedFile = null;
+			selectedFileType = null;
+		}
+
+		selectedDocId = docId;
+		selectedDocContent = null;
+		costEstimate = null;
+
+		if (!docId) return;
+
+		// Load document content
+		const doc = await getDocument(docId);
+		if (!doc) return;
+
+		// For markdown, we can calculate estimate immediately
+		if (doc.type === 'markdown') {
+			let content: string;
+			if (typeof doc.content === 'string') {
+				content = doc.content;
+			} else {
+				content = await doc.content.text();
+			}
+			selectedDocContent = content;
+			selectedFileType = 'markdown';
+			updateCostEstimate(content);
+		} else {
+			selectedFileType = 'pdf';
+			// For PDF, user needs to click "Convert & Estimate" button
+		}
+	}
+
+	function updateCostEstimate(content: string) {
+		if (!content) {
+			costEstimate = null;
+			return;
+		}
+		costEstimate = estimateWorkflowCost(
+			content,
+			cleanupModel,
+			translationModel,
+			Math.min(cleanupChunkSize, translationChunkSize)
+		);
+	}
+
 	onMount(async () => {
 		if (browser) {
+			// Load documents from IndexedDB
+			await loadDocuments();
+
 			// Load saved settings from localStorage
 			const savedCleanupModel = localStorage.getItem('default_model');
 			const savedChunkSize = localStorage.getItem('default_chunk_size');
@@ -152,7 +258,18 @@
 			if (isAcceptedFile(file)) {
 				selectedFile = file;
 				selectedFileType = getFileType(file);
+				// Clear document selection when file is uploaded
+				selectedDocId = '';
+				selectedDocContent = null;
+				costEstimate = null;
 				error = '';
+				// For markdown files, calculate estimate immediately
+				if (selectedFileType === 'markdown') {
+					file.text().then(content => {
+						selectedDocContent = content;
+						updateCostEstimate(content);
+					});
+				}
 			} else {
 				error = 'Please select a PDF or Markdown file';
 			}
@@ -166,7 +283,18 @@
 			if (isAcceptedFile(file)) {
 				selectedFile = file;
 				selectedFileType = getFileType(file);
+				// Clear document selection when file is uploaded
+				selectedDocId = '';
+				selectedDocContent = null;
+				costEstimate = null;
 				error = '';
+				// For markdown files, calculate estimate immediately
+				if (selectedFileType === 'markdown') {
+					file.text().then(content => {
+						selectedDocContent = content;
+						updateCostEstimate(content);
+					});
+				}
 			} else {
 				error = 'Please select a PDF or Markdown file';
 			}
@@ -174,7 +302,8 @@
 	}
 
 	async function handleStartWorkflow() {
-		if (!selectedFile || !selectedFileType) return;
+		// Need either a file or a selected document
+		if (!selectedFile && !selectedDocId) return;
 
 		// Get API key
 		const apiKey = localStorage.getItem('openai_api_key');
@@ -183,8 +312,8 @@
 			return;
 		}
 
-		// Determine if we're skipping the convert phase
-		const isMarkdownInput = selectedFileType === 'markdown';
+		// Determine the document type
+		const isMarkdownInput = selectedDocType === 'markdown';
 
 		// Reset state with correct phases
 		error = '';
@@ -212,10 +341,19 @@
 		};
 
 		try {
-			// Read file based on type
+			// Read content based on source (file or selected document)
 			let workflowOptions: Parameters<typeof runWorkflow>[0];
 
-			if (isMarkdownInput) {
+			if (selectedDocContent && isMarkdownInput) {
+				// Use already-loaded markdown content from selected document
+				workflowOptions = {
+					markdownContent: selectedDocContent,
+					apiKey,
+					cleanupSettings,
+					translationSettings,
+					callbacks: {}
+				};
+			} else if (selectedFile && isMarkdownInput) {
 				// Read markdown file as text
 				const markdownContent = await selectedFile.text();
 				workflowOptions = {
@@ -225,7 +363,7 @@
 					translationSettings,
 					callbacks: {}
 				};
-			} else {
+			} else if (selectedFile) {
 				// Read PDF file as ArrayBuffer
 				const pdfBuffer = await selectedFile.arrayBuffer();
 				workflowOptions = {
@@ -235,6 +373,31 @@
 					translationSettings,
 					callbacks: {}
 				};
+			} else if (selectedDocId) {
+				// Load PDF from selected document
+				const doc = await getDocument(selectedDocId);
+				if (!doc) {
+					error = 'Document not found';
+					return;
+				}
+				let pdfBuffer: ArrayBuffer;
+				if (doc.content instanceof Blob) {
+					pdfBuffer = await doc.content.arrayBuffer();
+				} else {
+					// String content - shouldn't happen for PDF but handle gracefully
+					error = 'Invalid document format';
+					return;
+				}
+				workflowOptions = {
+					pdfBuffer: new Uint8Array(pdfBuffer),
+					apiKey,
+					cleanupSettings,
+					translationSettings,
+					callbacks: {}
+				};
+			} else {
+				error = 'No document selected';
+				return;
 			}
 
 			// Run the workflow with appropriate callbacks
@@ -461,6 +624,86 @@
 					<p class="text-xs text-gray-500">PDF or Markdown files</p>
 				{/if}
 			</div>
+
+			<!-- Document Selection Dropdown -->
+			<div class="mt-4 pt-4 border-t border-gray-200">
+				<p class="text-sm text-gray-500 text-center mb-2">Or select from existing documents:</p>
+				<select
+					data-testid="document-select"
+					bind:value={selectedDocId}
+					onchange={handleDocumentSelect}
+					disabled={workflowState.isRunning || selectableDocuments.length === 0}
+					class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 text-sm"
+				>
+					{#if selectableDocuments.length === 0}
+						<option value="">No documents available</option>
+					{:else}
+						<option value="">Choose a document...</option>
+						{#each selectableDocuments as doc (doc.id)}
+							<option value={doc.id}>{doc.name} ({doc.type.toUpperCase()})</option>
+						{/each}
+					{/if}
+				</select>
+			</div>
+
+			<!-- Cost Estimate Display -->
+			{#if costEstimate}
+				<div data-testid="cost-estimate" class="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+					<h3 class="text-sm font-semibold text-blue-800 mb-2">Estimated Cost</h3>
+					<div class="grid grid-cols-2 gap-2 text-sm">
+						<div>
+							<span class="text-gray-600">Cleanup:</span>
+							<span class="font-medium text-gray-900">${costEstimate.cleanup.estimatedCostUsd.toFixed(2)}</span>
+						</div>
+						<div>
+							<span class="text-gray-600">Translation:</span>
+							<span class="font-medium text-gray-900">${costEstimate.translate.estimatedCostUsd.toFixed(2)}</span>
+						</div>
+						<div class="col-span-2 pt-2 border-t border-blue-200">
+							<span class="text-gray-700 font-medium">Combined:</span>
+							<span class="font-bold text-blue-800">${costEstimate.totalCostUsd.toFixed(2)}</span>
+							<span class="text-gray-500 ml-2">({costEstimate.totalTokens.toLocaleString()} tokens)</span>
+						</div>
+					</div>
+				</div>
+			{/if}
+
+			<!-- Convert & Estimate Button for PDF -->
+			{#if showConvertButton}
+				<div class="mt-4">
+					<button
+						data-testid="convert-estimate-button"
+						onclick={async () => {
+							// TODO: Implement PDF conversion for cost estimation
+							isConverting = true;
+							error = '';
+							try {
+								const doc = await getDocument(selectedDocId);
+								if (!doc) {
+									error = 'Document not found';
+									return;
+								}
+								// For now, we'll need to implement PDF conversion here
+								// This is a placeholder - the actual conversion will be implemented
+								error = 'PDF conversion for cost estimation is not yet implemented';
+							} finally {
+								isConverting = false;
+							}
+						}}
+						disabled={isConverting || workflowState.isRunning}
+						class="w-full px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+					>
+						{#if isConverting}
+							Converting PDF...
+						{:else}
+							Convert & Estimate Cost
+						{/if}
+					</button>
+					<p class="text-xs text-gray-500 mt-1 text-center">
+						Converts PDF to markdown to calculate cost estimate
+					</p>
+				</div>
+			{/if}
 		</div>
 
 		<!-- Step 2: Cleanup Settings -->
