@@ -10,6 +10,7 @@
 	} from '$lib/storage';
 	import {
 		type ProgressState,
+		type CostData,
 		createDeterminateProgress,
 		updateProgress,
 		completeProgress,
@@ -33,6 +34,7 @@
 	import { createTranslator } from '$lib/services/translator';
 	import { translateDocument } from '$lib/services/translationEngine';
 	import { exportMarkdownAsDocx } from '$lib/services/docxExporter';
+	import { estimateJobCost, calculateCost, type CostEstimate, type TokenUsage } from '$lib/services/costCalculator';
 
 	// Display-friendly version for the list
 	interface DocumentListItem {
@@ -55,6 +57,10 @@
 	let activeTab = $state<'translated-only' | 'bilingual'>('translated-only');
 	let error = $state('');
 	let progress = $state<ProgressState>(resetProgress());
+
+	// Cost tracking state
+	let costEstimate = $state<CostEstimate | null>(null);
+	let finalCost = $state<{ usage: TokenUsage; cost: number } | null>(null);
 
 	// Target language state
 	let targetLanguage = $state('');
@@ -118,6 +124,42 @@
 	// Can translate when document selected AND language filled
 	let canTranslate = $derived(!!selectedDocId && !!targetLanguage.trim());
 
+	// Compute cost estimate when document and model are selected
+	async function updateCostEstimate() {
+		if (!selectedDocId) {
+			costEstimate = null;
+			return;
+		}
+
+		try {
+			const doc = await getDocument(selectedDocId);
+			if (!doc) {
+				costEstimate = null;
+				return;
+			}
+
+			let content: string;
+			if (typeof doc.content === 'string') {
+				content = doc.content;
+			} else {
+				content = await doc.content.text();
+			}
+
+			const chunks = chunkBySize(content, chunkSize);
+			const chunkContents = chunks.map(c => c.content);
+			costEstimate = estimateJobCost(chunkContents, model, 'translate');
+		} catch {
+			costEstimate = null;
+		}
+	}
+
+	// Re-estimate when relevant inputs change
+	$effect(() => {
+		if (browser && selectedDocId && model) {
+			updateCostEstimate();
+		}
+	});
+
 	/**
 	 * Assembles translated-only markdown from translated chunks
 	 */
@@ -156,6 +198,7 @@
 		error = '';
 		translatedOnlyMarkdown = '';
 		bilingualMarkdown = '';
+		finalCost = null;
 		progress = createDeterminateProgress('Starting translation...');
 
 		try {
@@ -198,13 +241,20 @@
 			});
 
 			// Step 3: Translate document with progress callback
-			const { translatedChunks } = await translateDocument(chunks, translator.translateChunk, {
+			const { translatedChunks, totalUsage } = await translateDocument(chunks, translator.translateChunk, {
 				onProgress: (prog) => {
 					// Map progress to 10-95% (reserving 0-10 for chunking, 95-100 for assembly)
 					const mappedPercentage = 10 + Math.round(prog.percentComplete * 0.85);
+					const actualCostSoFar = calculateCost(prog.tokensUsed, model);
+					const progressCostData: CostData = {
+						tokensUsed: prog.tokensUsed,
+						estimatedCost: costEstimate?.estimatedCostUsd || 0,
+						actualCostSoFar
+					};
 					progress = updateProgress(progress as ReturnType<typeof createDeterminateProgress>, {
 						percentage: mappedPercentage,
-						message: `Translating chunk ${prog.current}/${prog.total}...`
+						message: `Translating chunk ${prog.current}/${prog.total}...`,
+						costData: progressCostData
 					});
 				}
 			});
@@ -217,6 +267,10 @@
 
 			translatedOnlyMarkdown = assembleTranslatedOnly(translatedChunks);
 			bilingualMarkdown = assembleBilingual(translatedChunks);
+
+			// Calculate final cost
+			const finalCostUsd = calculateCost(totalUsage, model);
+			finalCost = { usage: totalUsage, cost: finalCostUsd };
 
 			progress = completeProgress(
 				progress as ReturnType<typeof createDeterminateProgress>,
@@ -404,6 +458,26 @@
 			</div>
 		{/if}
 
+		{#if costEstimate && selectedDocId && !isTranslating}
+			<div data-testid="cost-estimate" class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+				<h3 class="text-sm font-medium text-blue-800 mb-2">Cost Estimate</h3>
+				<div class="grid grid-cols-3 gap-4 text-sm">
+					<div>
+						<span class="text-blue-600">Model:</span>
+						<span class="font-medium text-blue-800 ml-1">{model}</span>
+					</div>
+					<div>
+						<span class="text-blue-600">Est. tokens:</span>
+						<span class="font-medium text-blue-800 ml-1">~{(costEstimate.estimatedInputTokens + costEstimate.estimatedOutputTokens).toLocaleString()}</span>
+					</div>
+					<div>
+						<span class="text-blue-600">Est. cost:</span>
+						<span class="font-medium text-blue-800 ml-1">${costEstimate.estimatedCostUsd.toFixed(2)}</span>
+					</div>
+				</div>
+			</div>
+		{/if}
+
 		<button
 			onclick={handleTranslate}
 			class="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
@@ -428,6 +502,26 @@
 	{#if translatedOnlyMarkdown || bilingualMarkdown}
 		<div class="mt-6 bg-white rounded-lg border border-gray-200 p-6">
 			<h2 class="text-lg font-semibold text-gray-900 mb-4">Translation Results</h2>
+
+			{#if finalCost}
+				<div data-testid="final-cost" class="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+					<h3 class="text-sm font-medium text-green-800 mb-2">Translation Complete</h3>
+					<div class="grid grid-cols-3 gap-4 text-sm">
+						<div>
+							<span class="text-green-600">Total tokens:</span>
+							<span class="font-medium text-green-800 ml-1">{finalCost.usage.totalTokens.toLocaleString()}</span>
+						</div>
+						<div>
+							<span class="text-green-600">Input:</span>
+							<span class="font-medium text-green-800 ml-1">{finalCost.usage.promptTokens.toLocaleString()}</span>
+						</div>
+						<div>
+							<span class="text-green-600">Final cost:</span>
+							<span class="font-medium text-green-800 ml-1">${finalCost.cost.toFixed(2)}</span>
+						</div>
+					</div>
+				</div>
+			{/if}
 
 			<!-- Tabs -->
 			<div class="flex border-b border-gray-200 mb-4" role="tablist">

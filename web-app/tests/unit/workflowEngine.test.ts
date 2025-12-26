@@ -39,6 +39,9 @@ import { rectifyDocument } from '$lib/services/rectificationEngine';
 import { createTranslator } from '$lib/services/translator';
 import { translateDocument } from '$lib/services/translationEngine';
 
+// Default token usage for mocks
+const defaultUsage = { promptTokens: 100, completionTokens: 50, totalTokens: 150 };
+
 describe('Workflow Engine', () => {
 	const mockPdfBuffer = new Uint8Array([1, 2, 3, 4]);
 	const mockMarkdown = '# Test Document\n\nSome content here.';
@@ -72,7 +75,7 @@ describe('Workflow Engine', () => {
 		]);
 
 		vi.mocked(createRectifier).mockReturnValue({
-			rectifyChunk: vi.fn().mockResolvedValue(mockCleanedMarkdown)
+			rectifyChunk: vi.fn().mockResolvedValue({ content: mockCleanedMarkdown, usage: defaultUsage })
 		});
 
 		vi.mocked(rectifyDocument).mockResolvedValue({
@@ -85,11 +88,12 @@ describe('Workflow Engine', () => {
 					originalContent: mockMarkdown,
 					rectifiedContent: mockCleanedMarkdown
 				}
-			]
+			],
+			totalUsage: defaultUsage
 		});
 
 		vi.mocked(createTranslator).mockReturnValue({
-			translateChunk: vi.fn().mockResolvedValue(mockTranslatedContent)
+			translateChunk: vi.fn().mockResolvedValue({ content: mockTranslatedContent, usage: defaultUsage })
 		});
 
 		vi.mocked(translateDocument).mockResolvedValue({
@@ -102,7 +106,8 @@ describe('Workflow Engine', () => {
 					originalContent: mockCleanedMarkdown,
 					translatedContent: mockTranslatedContent
 				}
-			]
+			],
+			totalUsage: defaultUsage
 		});
 	});
 
@@ -240,7 +245,8 @@ describe('Workflow Engine', () => {
 						current: 1,
 						total: 2,
 						percentComplete: 50,
-						estimatedTimeRemaining: 1000
+						estimatedTimeRemaining: 1000,
+						tokensUsed: defaultUsage
 					});
 				}
 				return {
@@ -253,7 +259,8 @@ describe('Workflow Engine', () => {
 							originalContent: mockMarkdown,
 							rectifiedContent: mockCleanedMarkdown
 						}
-					]
+					],
+					totalUsage: defaultUsage
 				};
 			});
 
@@ -286,7 +293,8 @@ describe('Workflow Engine', () => {
 						current: 1,
 						total: 3,
 						percentComplete: 33,
-						estimatedTimeRemaining: 2000
+						estimatedTimeRemaining: 2000,
+						tokensUsed: defaultUsage
 					});
 				}
 				return {
@@ -299,7 +307,8 @@ describe('Workflow Engine', () => {
 							originalContent: mockCleanedMarkdown,
 							translatedContent: mockTranslatedContent
 						}
-					]
+					],
+					totalUsage: defaultUsage
 				};
 			});
 
@@ -403,7 +412,8 @@ describe('Workflow Engine', () => {
 						originalContent: 'English 2',
 						translatedContent: 'Japanese 2'
 					}
-				]
+				],
+				totalUsage: defaultUsage
 			});
 
 			const options: WorkflowOptions = {
@@ -436,6 +446,102 @@ describe('Workflow Engine', () => {
 
 			expect(result.markdown).toBe(mockMarkdown);
 			expect(result.cleaned).toBe(mockCleanedMarkdown);
+		});
+
+		it('returns aggregated token usage from both phases', async () => {
+			const cleanupUsage = { promptTokens: 100, completionTokens: 50, totalTokens: 150 };
+			const translateUsage = { promptTokens: 200, completionTokens: 100, totalTokens: 300 };
+
+			vi.mocked(rectifyDocument).mockResolvedValue({
+				rectifiedChunks: [
+					{
+						index: 0,
+						type: 'header-section',
+						headerLevel: 1,
+						content: mockMarkdown,
+						originalContent: mockMarkdown,
+						rectifiedContent: mockCleanedMarkdown
+					}
+				],
+				totalUsage: cleanupUsage
+			});
+
+			vi.mocked(translateDocument).mockResolvedValue({
+				translatedChunks: [
+					{
+						index: 0,
+						type: 'header-section',
+						headerLevel: 1,
+						content: mockCleanedMarkdown,
+						originalContent: mockCleanedMarkdown,
+						translatedContent: mockTranslatedContent
+					}
+				],
+				totalUsage: translateUsage
+			});
+
+			const options: WorkflowOptions = {
+				pdfBuffer: mockPdfBuffer,
+				apiKey: 'test-key',
+				cleanupSettings: defaultCleanupSettings,
+				translationSettings: defaultTranslationSettings,
+				callbacks: {}
+			};
+
+			const result = await runWorkflow(options);
+
+			// Should aggregate cleanup + translation usage
+			expect(result.totalUsage).toEqual({
+				promptTokens: 300,
+				completionTokens: 150,
+				totalTokens: 450
+			});
+		});
+
+		it('includes per-phase token usage breakdown', async () => {
+			const cleanupUsage = { promptTokens: 100, completionTokens: 50, totalTokens: 150 };
+			const translateUsage = { promptTokens: 200, completionTokens: 100, totalTokens: 300 };
+
+			vi.mocked(rectifyDocument).mockResolvedValue({
+				rectifiedChunks: [
+					{
+						index: 0,
+						type: 'header-section',
+						headerLevel: 1,
+						content: mockMarkdown,
+						originalContent: mockMarkdown,
+						rectifiedContent: mockCleanedMarkdown
+					}
+				],
+				totalUsage: cleanupUsage
+			});
+
+			vi.mocked(translateDocument).mockResolvedValue({
+				translatedChunks: [
+					{
+						index: 0,
+						type: 'header-section',
+						headerLevel: 1,
+						content: mockCleanedMarkdown,
+						originalContent: mockCleanedMarkdown,
+						translatedContent: mockTranslatedContent
+					}
+				],
+				totalUsage: translateUsage
+			});
+
+			const options: WorkflowOptions = {
+				pdfBuffer: mockPdfBuffer,
+				apiKey: 'test-key',
+				cleanupSettings: defaultCleanupSettings,
+				translationSettings: defaultTranslationSettings,
+				callbacks: {}
+			};
+
+			const result = await runWorkflow(options);
+
+			expect(result.usageByPhase.cleanup).toEqual(cleanupUsage);
+			expect(result.usageByPhase.translate).toEqual(translateUsage);
 		});
 	});
 

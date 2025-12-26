@@ -1,10 +1,20 @@
+import type { TokenUsage } from './services/costCalculator';
+
 // Progress state types
 export type ProgressType = 'idle' | 'determinate' | 'indeterminate';
+
+// Cost tracking data for progress states
+export interface CostData {
+	tokensUsed: TokenUsage;
+	estimatedCost: number;
+	actualCostSoFar: number;
+}
 
 export interface BaseProgress {
 	type: ProgressType;
 	message: string;
 	isActive: boolean;
+	costData?: CostData;
 }
 
 export interface IdleProgress extends BaseProgress {
@@ -33,12 +43,17 @@ export interface ProgressEvent {
 }
 
 // Factory functions
-export function createDeterminateProgress(message: string, percentage = 0): DeterminateProgress {
+export function createDeterminateProgress(
+	message: string,
+	percentage = 0,
+	costData?: CostData
+): DeterminateProgress {
 	return {
 		type: 'determinate',
 		percentage: clampPercentage(percentage),
 		message,
-		isActive: true
+		isActive: true,
+		costData
 	};
 }
 
@@ -62,12 +77,13 @@ export function resetProgress(): IdleProgress {
 // Update functions
 export function updateProgress(
 	state: DeterminateProgress,
-	updates: { percentage?: number; message?: string }
+	updates: { percentage?: number; message?: string; costData?: CostData }
 ): DeterminateProgress {
 	return {
 		...state,
 		percentage: updates.percentage !== undefined ? clampPercentage(updates.percentage) : state.percentage,
-		message: updates.message !== undefined ? updates.message : state.message
+		message: updates.message !== undefined ? updates.message : state.message,
+		costData: updates.costData !== undefined ? updates.costData : state.costData
 	};
 }
 

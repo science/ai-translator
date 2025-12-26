@@ -3,6 +3,7 @@
 
 import { createOpenAIClient } from './openai';
 import { is5SeriesModel, getValidReasoningEffort as getModelReasoningEffort } from '../models';
+import type { TokenUsage } from './costCalculator';
 
 export interface RectifierOptions {
 	apiKey: string;
@@ -12,8 +13,16 @@ export interface RectifierOptions {
 	maxRetries?: number;
 }
 
+/**
+ * Result from rectifyChunk including content and token usage.
+ */
+export interface RectificationResult {
+	content: string;
+	usage: TokenUsage;
+}
+
 export interface Rectifier {
-	rectifyChunk: (chunk: string) => Promise<string>;
+	rectifyChunk: (chunk: string) => Promise<RectificationResult>;
 }
 
 /**
@@ -86,7 +95,7 @@ export function createRectifier(options: RectifierOptions): Rectifier {
 	// Use centralized reasoning effort logic from models.ts
 	const reasoningEffort = getModelReasoningEffort(model, options.reasoningEffort) || 'medium';
 
-	async function rectifyChunk(chunk: string): Promise<string> {
+	async function rectifyChunk(chunk: string): Promise<RectificationResult> {
 		const systemPrompt = getSystemPrompt();
 
 		const requestOptions: Parameters<typeof client.createChatCompletion>[0] = {
@@ -108,7 +117,16 @@ export function createRectifier(options: RectifierOptions): Rectifier {
 			throw new Error('Invalid response from OpenAI API');
 		}
 
-		return response.choices[0].message.content;
+		const content = response.choices[0].message.content;
+
+		// Extract token usage from response, defaulting to 0 if not present
+		const usage: TokenUsage = {
+			promptTokens: response.usage?.prompt_tokens ?? 0,
+			completionTokens: response.usage?.completion_tokens ?? 0,
+			totalTokens: response.usage?.total_tokens ?? 0
+		};
+
+		return { content, usage };
 	}
 
 	return {

@@ -37,6 +37,7 @@
 	"dependencies": {
 		"@mohtasham/md-to-docx": "^2.4.0",
 		"@opendocsg/pdf2md": "^0.2.2",
+		"gpt-tokenizer": "^3.4.0",
 		"idb": "^8.0.3",
 		"marked": "^17.0.1"
 	}

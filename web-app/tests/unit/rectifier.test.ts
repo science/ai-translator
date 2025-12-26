@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createRectifier, getSystemPrompt } from '$lib/services/rectifier';
+import { createRectifier, getSystemPrompt, type RectificationResult } from '$lib/services/rectifier';
 
 describe('rectifier service', () => {
 	describe('getSystemPrompt', () => {
@@ -60,7 +60,52 @@ describe('rectifier service', () => {
 				const rectifier = createRectifier({ apiKey: 'test-key' });
 				const result = await rectifier.rectifyChunk('ontents of the book');
 
-				expect(result).toBe('Contents of the book');
+				expect(result.content).toBe('Contents of the book');
+			});
+
+			it('should return token usage in result', async () => {
+				globalThis.fetch = vi.fn().mockResolvedValue({
+					ok: true,
+					json: () =>
+						Promise.resolve({
+							id: 'chatcmpl-123',
+							choices: [{ message: { content: 'Fixed content' } }],
+							usage: {
+								prompt_tokens: 200,
+								completion_tokens: 100,
+								total_tokens: 300
+							}
+						})
+				});
+
+				const rectifier = createRectifier({ apiKey: 'test-key' });
+				const result = await rectifier.rectifyChunk('Broken content');
+
+				expect(result.content).toBe('Fixed content');
+				expect(result.usage).toBeDefined();
+				expect(result.usage.promptTokens).toBe(200);
+				expect(result.usage.completionTokens).toBe(100);
+				expect(result.usage.totalTokens).toBe(300);
+			});
+
+			it('should handle missing usage data gracefully', async () => {
+				globalThis.fetch = vi.fn().mockResolvedValue({
+					ok: true,
+					json: () =>
+						Promise.resolve({
+							id: 'chatcmpl-123',
+							choices: [{ message: { content: 'Fixed content' } }]
+							// No usage field
+						})
+				});
+
+				const rectifier = createRectifier({ apiKey: 'test-key' });
+				const result = await rectifier.rectifyChunk('Broken content');
+
+				expect(result.content).toBe('Fixed content');
+				expect(result.usage.promptTokens).toBe(0);
+				expect(result.usage.completionTokens).toBe(0);
+				expect(result.usage.totalTokens).toBe(0);
 			});
 
 			it('should use gpt-4o as default model', async () => {

@@ -7,6 +7,7 @@ import { createRectifier } from './rectifier';
 import { rectifyDocument, type RectificationProgress } from './rectificationEngine';
 import { createTranslator } from './translator';
 import { translateDocument, type TranslationProgress } from './translationEngine';
+import type { TokenUsage } from './costCalculator';
 import type { CleanupSettings, TranslationSettings, WorkflowPhaseId } from '$lib/workflow';
 
 // Progress type that can be from either engine
@@ -37,12 +38,20 @@ export interface TranslationOutputs {
 	bilingual: string;
 }
 
+// Token usage breakdown by phase
+export interface UsageByPhase {
+	cleanup: TokenUsage;
+	translate: TokenUsage;
+}
+
 // Result of the complete workflow
 export interface WorkflowResult {
 	markdown: string;
 	cleaned: string;
 	japaneseOnly: string;
 	bilingual: string;
+	totalUsage: TokenUsage;
+	usageByPhase: UsageByPhase;
 }
 
 /**
@@ -110,6 +119,10 @@ export async function runWorkflow(options: WorkflowOptions): Promise<WorkflowRes
 	let japaneseOnly = '';
 	let bilingual = '';
 
+	// Track token usage by phase
+	let cleanupUsage: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+	let translateUsage: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+
 	// Determine if we're starting from markdown (skip convert phase)
 	const isMarkdownInput = !!markdownContent;
 
@@ -151,7 +164,7 @@ export async function runWorkflow(options: WorkflowOptions): Promise<WorkflowRes
 		});
 
 		// Run rectification with progress tracking
-		const { rectifiedChunks } = await rectifyDocument(
+		const { rectifiedChunks, totalUsage } = await rectifyDocument(
 			cleanupChunks,
 			rectifier.rectifyChunk,
 			{
@@ -160,6 +173,9 @@ export async function runWorkflow(options: WorkflowOptions): Promise<WorkflowRes
 				}
 			}
 		);
+
+		// Capture cleanup token usage
+		cleanupUsage = totalUsage;
 
 		// Assemble cleaned document
 		cleaned = assembleRectified(rectifiedChunks);
@@ -190,7 +206,7 @@ export async function runWorkflow(options: WorkflowOptions): Promise<WorkflowRes
 		});
 
 		// Run translation with progress tracking
-		const { translatedChunks } = await translateDocument(
+		const { translatedChunks, totalUsage: translationTotalUsage } = await translateDocument(
 			translateChunks,
 			translator.translateChunk,
 			{
@@ -199,6 +215,9 @@ export async function runWorkflow(options: WorkflowOptions): Promise<WorkflowRes
 				}
 			}
 		);
+
+		// Capture translation token usage
+		translateUsage = translationTotalUsage;
 
 		// Assemble both output versions
 		japaneseOnly = assembleJapaneseOnly(translatedChunks);
@@ -211,10 +230,22 @@ export async function runWorkflow(options: WorkflowOptions): Promise<WorkflowRes
 		throw err;
 	}
 
+	// Aggregate token usage
+	const totalUsage: TokenUsage = {
+		promptTokens: cleanupUsage.promptTokens + translateUsage.promptTokens,
+		completionTokens: cleanupUsage.completionTokens + translateUsage.completionTokens,
+		totalTokens: cleanupUsage.totalTokens + translateUsage.totalTokens
+	};
+
 	return {
 		markdown,
 		cleaned,
 		japaneseOnly,
-		bilingual
+		bilingual,
+		totalUsage,
+		usageByPhase: {
+			cleanup: cleanupUsage,
+			translate: translateUsage
+		}
 	};
 }

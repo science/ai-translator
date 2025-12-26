@@ -8,6 +8,7 @@
 	} from '$lib/storage';
 	import {
 		type ProgressState,
+		type CostData,
 		createDeterminateProgress,
 		createIndeterminateProgress,
 		updateProgress,
@@ -31,7 +32,7 @@
 		getElapsedTime,
 		formatElapsedTime
 	} from '$lib/workflow';
-	import { runWorkflow, type WorkflowResult } from '$lib/services/workflowEngine';
+	import { runWorkflow, type WorkflowResult, type UsageByPhase } from '$lib/services/workflowEngine';
 	import { exportMarkdownAsDocx } from '$lib/services/docxExporter';
 	import { getLanguageHistory, addLanguageToHistory } from '$lib/languageHistory';
 	import { getLanguageCode } from '$lib/languageCode';
@@ -41,6 +42,7 @@
 		is5SeriesModel as checkIs5Series,
 		getReasoningEffortOptions
 	} from '$lib/models';
+	import { calculateCost, type TokenUsage } from '$lib/services/costCalculator';
 
 	// File type detection
 	type UploadedFileType = 'pdf' | 'markdown';
@@ -253,7 +255,21 @@
 						}
 					},
 					onPhaseProgress: (phaseId, progress) => {
-						if (currentProgress.type === 'determinate') {
+						if (currentProgress.type === 'determinate' && 'tokensUsed' in progress) {
+							// Calculate cost based on phase model
+							const phaseModel = phaseId === 'cleanup' ? cleanupModel : translationModel;
+							const actualCostSoFar = calculateCost(progress.tokensUsed, phaseModel);
+							const progressCostData: CostData = {
+								tokensUsed: progress.tokensUsed,
+								estimatedCost: 0, // We don't have pre-estimates for workflow yet
+								actualCostSoFar
+							};
+							currentProgress = updateProgress(currentProgress, {
+								percentage: progress.percentComplete,
+								message: `Processing chunk ${progress.current}/${progress.total}...`,
+								costData: progressCostData
+							});
+						} else if (currentProgress.type === 'determinate') {
 							currentProgress = updateProgress(currentProgress, {
 								percentage: progress.percentComplete,
 								message: `Processing chunk ${progress.current}/${progress.total}...`
@@ -674,20 +690,47 @@
 		<div class="mt-6 bg-white rounded-lg border border-gray-200 p-6">
 			<h2 class="text-lg font-semibold text-gray-900 mb-4">Output Documents</h2>
 
+			{#if workflowResult.totalUsage}
+				{@const cleanupCost = calculateCost(workflowResult.usageByPhase.cleanup, cleanupModel)}
+				{@const translateCost = calculateCost(workflowResult.usageByPhase.translate, translationModel)}
+				{@const totalCost = cleanupCost + translateCost}
+				<div data-testid="final-cost" class="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+					<h3 class="text-sm font-medium text-green-800 mb-2">Workflow Complete</h3>
+					<div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+						<div>
+							<span class="text-green-600">Total tokens:</span>
+							<span class="font-medium text-green-800 ml-1">{workflowResult.totalUsage.totalTokens.toLocaleString()}</span>
+						</div>
+						<div>
+							<span class="text-green-600">Cleanup cost:</span>
+							<span class="font-medium text-green-800 ml-1">${cleanupCost.toFixed(2)}</span>
+						</div>
+						<div>
+							<span class="text-green-600">Translation cost:</span>
+							<span class="font-medium text-green-800 ml-1">${translateCost.toFixed(2)}</span>
+						</div>
+						<div>
+							<span class="text-green-600">Total cost:</span>
+							<span class="font-bold text-green-800 ml-1">${totalCost.toFixed(2)}</span>
+						</div>
+					</div>
+				</div>
+			{/if}
+
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
 				{#each [
 					// Skip "Original/Converted Markdown" for markdown input since user already has the source
-					...(isMarkdownInput ? [] : [{ label: 'Converted Markdown', key: 'markdown', filename: `${baseName}-converted.md` }]),
-					{ label: 'Cleaned Markdown', key: 'cleaned', filename: `${baseName}-cleaned.md` },
-					{ label: 'Target Language Only', key: 'japaneseOnly', filename: `${baseName}-${langCode}.md` },
-					{ label: 'Bilingual', key: 'bilingual', filename: `${baseName}-bilingual.md` }
+					...(isMarkdownInput ? [] : [{ label: 'Converted Markdown', key: 'markdown' as const, filename: `${baseName}-converted.md` }]),
+					{ label: 'Cleaned Markdown', key: 'cleaned' as const, filename: `${baseName}-cleaned.md` },
+					{ label: 'Target Language Only', key: 'japaneseOnly' as const, filename: `${baseName}-${langCode}.md` },
+					{ label: 'Bilingual', key: 'bilingual' as const, filename: `${baseName}-bilingual.md` }
 				] as output}
 					<div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
 						<span class="text-sm font-medium text-gray-700">{output.label}</span>
 						<div class="flex gap-2">
 							<button
 								data-testid="download-md-{output.key}"
-								onclick={() => workflowResult && downloadResult(workflowResult[output.key as keyof WorkflowResult], output.filename)}
+								onclick={() => workflowResult && downloadResult(workflowResult[output.key], output.filename)}
 								class="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
 								title="Download as Markdown"
 							>
@@ -695,7 +738,7 @@
 							</button>
 							<button
 								data-testid="download-docx-{output.key}"
-								onclick={() => workflowResult && downloadAsDocx(workflowResult[output.key as keyof WorkflowResult], output.filename)}
+								onclick={() => workflowResult && downloadAsDocx(workflowResult[output.key], output.filename)}
 								class="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
 								title="Download as Word document"
 							>

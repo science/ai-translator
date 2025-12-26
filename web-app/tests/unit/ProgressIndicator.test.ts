@@ -92,6 +92,42 @@ describe('ProgressIndicator Component', () => {
 		});
 	});
 
+	describe('cost display', () => {
+		it('displays cost info when costData is provided', () => {
+			const costData = {
+				tokensUsed: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+				estimatedCost: 0.50,
+				actualCostSoFar: 0.25
+			};
+			const progress = createDeterminateProgress('Processing...', 50, costData);
+			render(ProgressIndicator, { props: { progress } });
+
+			expect(screen.getByTestId('cost-display')).toBeDefined();
+			expect(screen.getByText('$0.25')).toBeDefined();
+			expect(screen.getByText('$0.50')).toBeDefined();
+		});
+
+		it('does not display cost info when costData is not provided', () => {
+			const progress = createDeterminateProgress('Processing...', 50);
+			const { container } = render(ProgressIndicator, { props: { progress } });
+
+			expect(container.querySelector('[data-testid="cost-display"]')).toBeNull();
+		});
+
+		it('formats cost to two decimal places', () => {
+			const costData = {
+				tokensUsed: { promptTokens: 1000, completionTokens: 500, totalTokens: 1500 },
+				estimatedCost: 1.2345,
+				actualCostSoFar: 0.5678
+			};
+			const progress = createDeterminateProgress('Processing...', 50, costData);
+			render(ProgressIndicator, { props: { progress } });
+
+			expect(screen.getByText('$0.57')).toBeDefined();
+			expect(screen.getByText('$1.23')).toBeDefined();
+		});
+	});
+
 	describe('accessibility', () => {
 		it('has accessible progress bar for determinate progress', () => {
 			const progress = createDeterminateProgress('Loading', 50);

@@ -2,6 +2,8 @@
 // Ported from CLI's src/rectificationEngine.js
 
 import type { Chunk } from './chunker';
+import type { RectificationResult as ChunkRectificationResult } from './rectifier';
+import type { TokenUsage } from './costCalculator';
 
 export interface RectifiedChunk extends Chunk {
 	originalContent: string;
@@ -13,16 +15,18 @@ export interface RectificationProgress {
 	total: number;
 	percentComplete: number;
 	estimatedTimeRemaining: number;
+	tokensUsed: TokenUsage;
 }
 
 export interface RectificationEngineOptions {
 	onProgress?: (progress: RectificationProgress) => void;
 }
 
-export type RectifyChunkFn = (chunk: string) => Promise<string>;
+export type RectifyChunkFn = (chunk: string) => Promise<ChunkRectificationResult>;
 
 export interface RectificationResult {
 	rectifiedChunks: RectifiedChunk[];
+	totalUsage: TokenUsage;
 }
 
 /**
@@ -37,10 +41,23 @@ export async function rectifyDocument(
 	const rectifiedChunks: RectifiedChunk[] = [];
 	const startTime = Date.now();
 
+	// Track total token usage across all chunks
+	const totalUsage: TokenUsage = {
+		promptTokens: 0,
+		completionTokens: 0,
+		totalTokens: 0
+	};
+
 	for (let i = 0; i < chunks.length; i++) {
 		const chunk = chunks[i];
 
-		const rectifiedContent = await rectifyChunkFn(chunk.content);
+		const result = await rectifyChunkFn(chunk.content);
+
+		// Extract content and accumulate usage
+		const rectifiedContent = result.content;
+		totalUsage.promptTokens += result.usage.promptTokens;
+		totalUsage.completionTokens += result.usage.completionTokens;
+		totalUsage.totalTokens += result.usage.totalTokens;
 
 		rectifiedChunks.push({
 			...chunk,
@@ -63,10 +80,11 @@ export async function rectifyDocument(
 				current,
 				total,
 				percentComplete,
-				estimatedTimeRemaining
+				estimatedTimeRemaining,
+				tokensUsed: { ...totalUsage }
 			});
 		}
 	}
 
-	return { rectifiedChunks };
+	return { rectifiedChunks, totalUsage };
 }

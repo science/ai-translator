@@ -2,6 +2,12 @@ import { describe, it, expect, vi } from 'vitest';
 import { rectifyDocument, type RectificationProgress } from '$lib/services/rectificationEngine';
 import type { Chunk } from '$lib/services/chunker';
 
+// Helper to create mock rectification result
+const mockResult = (content: string, usage = { promptTokens: 10, completionTokens: 5, totalTokens: 15 }) => ({
+	content,
+	usage
+});
+
 describe('rectificationEngine', () => {
 	describe('rectifyDocument', () => {
 		it('should return empty array for empty chunks', async () => {
@@ -9,6 +15,7 @@ describe('rectificationEngine', () => {
 			const result = await rectifyDocument([], rectifyChunkFn);
 
 			expect(result.rectifiedChunks).toEqual([]);
+			expect(result.totalUsage.totalTokens).toBe(0);
 			expect(rectifyChunkFn).not.toHaveBeenCalled();
 		});
 
@@ -16,7 +23,7 @@ describe('rectificationEngine', () => {
 			const chunks: Chunk[] = [
 				{ index: 0, type: 'header-section', headerLevel: 1, content: 'ontents' }
 			];
-			const rectifyChunkFn = vi.fn().mockResolvedValue('Contents');
+			const rectifyChunkFn = vi.fn().mockResolvedValue(mockResult('Contents'));
 
 			const result = await rectifyDocument(chunks, rectifyChunkFn);
 
@@ -33,9 +40,9 @@ describe('rectificationEngine', () => {
 			];
 			const rectifyChunkFn = vi
 				.fn()
-				.mockResolvedValueOnce('Contents')
-				.mockResolvedValueOnce('While')
-				.mockResolvedValueOnce('Preface');
+				.mockResolvedValueOnce(mockResult('Contents'))
+				.mockResolvedValueOnce(mockResult('While'))
+				.mockResolvedValueOnce(mockResult('Preface'));
 
 			const result = await rectifyDocument(chunks, rectifyChunkFn);
 
@@ -47,7 +54,7 @@ describe('rectificationEngine', () => {
 			const chunks: Chunk[] = [
 				{ index: 0, type: 'header-section', headerLevel: 2, content: 'ontents' }
 			];
-			const rectifyChunkFn = vi.fn().mockResolvedValue('Contents');
+			const rectifyChunkFn = vi.fn().mockResolvedValue(mockResult('Contents'));
 
 			const result = await rectifyDocument(chunks, rectifyChunkFn);
 
@@ -61,7 +68,7 @@ describe('rectificationEngine', () => {
 				{ index: 0, type: 'header-section', headerLevel: 1, content: 'A' },
 				{ index: 1, type: 'header-section', headerLevel: 1, content: 'B' }
 			];
-			const rectifyChunkFn = vi.fn().mockResolvedValue('Fixed');
+			const rectifyChunkFn = vi.fn().mockResolvedValue(mockResult('Fixed'));
 			const onProgress = vi.fn();
 
 			await rectifyDocument(chunks, rectifyChunkFn, { onProgress });
@@ -76,7 +83,7 @@ describe('rectificationEngine', () => {
 				{ index: 2, type: 'header-section', headerLevel: 1, content: 'C' },
 				{ index: 3, type: 'header-section', headerLevel: 1, content: 'D' }
 			];
-			const rectifyChunkFn = vi.fn().mockResolvedValue('Fixed');
+			const rectifyChunkFn = vi.fn().mockResolvedValue(mockResult('Fixed'));
 			const progressUpdates: RectificationProgress[] = [];
 			const onProgress = (progress: RectificationProgress) => {
 				progressUpdates.push({ ...progress });
@@ -98,7 +105,7 @@ describe('rectificationEngine', () => {
 				{ index: 0, type: 'header-section', headerLevel: 1, content: 'A' },
 				{ index: 1, type: 'header-section', headerLevel: 1, content: 'B' }
 			];
-			const rectifyChunkFn = vi.fn().mockResolvedValue('Fixed');
+			const rectifyChunkFn = vi.fn().mockResolvedValue(mockResult('Fixed'));
 			const progressUpdates: RectificationProgress[] = [];
 			const onProgress = (progress: RectificationProgress) => {
 				progressUpdates.push({ ...progress });
@@ -110,6 +117,43 @@ describe('rectificationEngine', () => {
 				expect(progress.estimatedTimeRemaining).toBeDefined();
 				expect(typeof progress.estimatedTimeRemaining).toBe('number');
 			});
+		});
+
+		it('should accumulate token usage across chunks', async () => {
+			const chunks: Chunk[] = [
+				{ index: 0, type: 'header-section', headerLevel: 1, content: 'A' },
+				{ index: 1, type: 'header-section', headerLevel: 1, content: 'B' }
+			];
+			const rectifyChunkFn = vi
+				.fn()
+				.mockResolvedValueOnce(mockResult('Fixed A', { promptTokens: 100, completionTokens: 50, totalTokens: 150 }))
+				.mockResolvedValueOnce(mockResult('Fixed B', { promptTokens: 80, completionTokens: 40, totalTokens: 120 }));
+
+			const result = await rectifyDocument(chunks, rectifyChunkFn);
+
+			expect(result.totalUsage.promptTokens).toBe(180);
+			expect(result.totalUsage.completionTokens).toBe(90);
+			expect(result.totalUsage.totalTokens).toBe(270);
+		});
+
+		it('should include token usage in progress updates', async () => {
+			const chunks: Chunk[] = [
+				{ index: 0, type: 'header-section', headerLevel: 1, content: 'A' },
+				{ index: 1, type: 'header-section', headerLevel: 1, content: 'B' }
+			];
+			const rectifyChunkFn = vi
+				.fn()
+				.mockResolvedValueOnce(mockResult('Fixed A', { promptTokens: 100, completionTokens: 50, totalTokens: 150 }))
+				.mockResolvedValueOnce(mockResult('Fixed B', { promptTokens: 80, completionTokens: 40, totalTokens: 120 }));
+			const progressUpdates: RectificationProgress[] = [];
+			const onProgress = (progress: RectificationProgress) => {
+				progressUpdates.push({ ...progress });
+			};
+
+			await rectifyDocument(chunks, rectifyChunkFn, { onProgress });
+
+			expect(progressUpdates[0].tokensUsed.totalTokens).toBe(150);
+			expect(progressUpdates[1].tokensUsed.totalTokens).toBe(270);
 		});
 
 		it('should handle rectification errors gracefully', async () => {

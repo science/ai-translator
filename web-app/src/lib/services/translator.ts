@@ -3,6 +3,7 @@
 
 import { createOpenAIClient } from './openai';
 import { is5SeriesModel, getValidReasoningEffort as getModelReasoningEffort } from '../models';
+import type { TokenUsage } from './costCalculator';
 
 export interface TranslationContext {
 	previousEnglish?: string | null;
@@ -20,12 +21,20 @@ export interface TranslatorOptions {
 	targetLanguage?: string;
 }
 
+/**
+ * Result from translateChunk including content and token usage.
+ */
+export interface TranslationResult {
+	content: string;
+	usage: TokenUsage;
+}
+
 export interface Translator {
 	translateChunk: (
 		chunk: string,
 		context?: TranslationContext,
 		targetLanguage?: string
-	) => Promise<string>;
+	) => Promise<TranslationResult>;
 }
 
 const RESPONSE_FORMAT_SCHEMA = {
@@ -69,7 +78,7 @@ export function createTranslator(options: TranslatorOptions): Translator {
 		chunk: string,
 		context: TranslationContext = {},
 		targetLanguage?: string
-	): Promise<string> {
+	): Promise<TranslationResult> {
 		const language = targetLanguage || defaultTargetLanguage;
 		const systemPrompt = contextAware
 			? getContextAwareSystemPrompt(language)
@@ -102,11 +111,16 @@ export function createTranslator(options: TranslatorOptions): Translator {
 
 		const rawContent = response.choices[0].message.content;
 
-		if (contextAware) {
-			return parseTranslationResponse(rawContent);
-		}
+		// Extract token usage from response, defaulting to 0 if not present
+		const usage: TokenUsage = {
+			promptTokens: response.usage?.prompt_tokens ?? 0,
+			completionTokens: response.usage?.completion_tokens ?? 0,
+			totalTokens: response.usage?.total_tokens ?? 0
+		};
 
-		return rawContent;
+		const content = contextAware ? parseTranslationResponse(rawContent) : rawContent;
+
+		return { content, usage };
 	}
 
 	return {

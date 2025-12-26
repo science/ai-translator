@@ -119,6 +119,53 @@ describe('Progress Utilities', () => {
 		});
 	});
 
+	describe('cost data', () => {
+		it('creates determinate progress without cost data by default', () => {
+			const state = createDeterminateProgress('Processing');
+			expect(state.costData).toBeUndefined();
+		});
+
+		it('creates determinate progress with cost data when provided', () => {
+			const costData = {
+				tokensUsed: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+				estimatedCost: 0.50,
+				actualCostSoFar: 0.25
+			};
+			const state = createDeterminateProgress('Processing', 50, costData);
+			expect(state.costData).toEqual(costData);
+		});
+
+		it('updates cost data in determinate progress', () => {
+			const initialCostData = {
+				tokensUsed: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+				estimatedCost: 0.50,
+				actualCostSoFar: 0.15
+			};
+			const initial = createDeterminateProgress('Processing', 50, initialCostData);
+
+			const updatedCostData = {
+				tokensUsed: { promptTokens: 200, completionTokens: 100, totalTokens: 300 },
+				estimatedCost: 0.50,
+				actualCostSoFar: 0.30
+			};
+			const updated = updateProgress(initial, { percentage: 75, costData: updatedCostData });
+
+			expect(updated.costData).toEqual(updatedCostData);
+		});
+
+		it('preserves cost data when updating only percentage', () => {
+			const costData = {
+				tokensUsed: { promptTokens: 100, completionTokens: 50, totalTokens: 150 },
+				estimatedCost: 0.50,
+				actualCostSoFar: 0.25
+			};
+			const initial = createDeterminateProgress('Processing', 50, costData);
+			const updated = updateProgress(initial, { percentage: 75 });
+
+			expect(updated.costData).toEqual(costData);
+		});
+	});
+
 	describe('parseProgressEvent', () => {
 		it('parses progress event with percentage', () => {
 			const data = '{"type":"progress","percentage":50,"message":"Processing chunk 2/4"}';

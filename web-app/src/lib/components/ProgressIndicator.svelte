@@ -6,6 +6,10 @@
 	}
 
 	let { progress }: Props = $props();
+
+	function formatCost(value: number): string {
+		return `$${value.toFixed(2)}`;
+	}
 </script>
 
 {#if progress.type !== 'idle' && progress.isActive}
@@ -29,6 +33,17 @@
 					style="width: {determinateProgress.percentage}%"
 				></div>
 			</div>
+			{#if determinateProgress.costData}
+				<div data-testid="cost-display" class="mt-2 flex items-center justify-between text-xs text-blue-600">
+					<span>
+						Cost: <span class="font-medium">{formatCost(determinateProgress.costData.actualCostSoFar)}</span>
+						of ~<span class="font-medium">{formatCost(determinateProgress.costData.estimatedCost)}</span> estimated
+					</span>
+					<span class="text-blue-500">
+						{determinateProgress.costData.tokensUsed.totalTokens.toLocaleString()} tokens
+					</span>
+				</div>
+			{/if}
 		{:else if progress.type === 'indeterminate'}
 			{@const indeterminateProgress = progress as IndeterminateProgress}
 			<div role="status" data-testid="activity-indicator">
