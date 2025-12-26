@@ -76,15 +76,21 @@ export async function addDocumentToIndexedDB(page: Page, doc: TestDocument) {
 				const tx = db.transaction('documents', 'readwrite');
 				const store = tx.objectStore('documents');
 
-				// Convert base64 to Blob for PDFs
+				// Convert content to Blob for PDFs
 				let content = document.content;
 				if (document.type === 'pdf' && typeof content === 'string') {
-					const binaryString = atob(content);
-					const bytes = new Uint8Array(binaryString.length);
-					for (let i = 0; i < binaryString.length; i++) {
-						bytes[i] = binaryString.charCodeAt(i);
+					// Try base64 decode first, fall back to raw string if that fails
+					try {
+						const binaryString = atob(content);
+						const bytes = new Uint8Array(binaryString.length);
+						for (let i = 0; i < binaryString.length; i++) {
+							bytes[i] = binaryString.charCodeAt(i);
+						}
+						content = new Blob([bytes], { type: 'application/pdf' });
+					} catch {
+						// Not valid base64, treat as raw content
+						content = new Blob([content], { type: 'application/pdf' });
 					}
-					content = new Blob([bytes], { type: 'application/pdf' });
 				}
 
 				store.put({ ...document, content });

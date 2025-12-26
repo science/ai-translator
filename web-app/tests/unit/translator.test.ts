@@ -4,7 +4,8 @@ import {
 	getContextAwareSystemPrompt,
 	getLegacySystemPrompt,
 	buildContextMessage,
-	parseTranslationResponse
+	parseTranslationResponse,
+	type TranslationResult
 } from '$lib/services/translator';
 
 describe('translator service', () => {
@@ -157,7 +158,7 @@ describe('translator service', () => {
 				const translator = createTranslator({ apiKey: 'test-key', contextAware: true });
 				const result = await translator.translateChunk('Hello');
 
-				expect(result).toBe('こんにちは');
+				expect(result.content).toBe('こんにちは');
 			});
 
 			it('should call OpenAI API and return translation (legacy mode)', async () => {
@@ -177,7 +178,7 @@ describe('translator service', () => {
 				const translator = createTranslator({ apiKey: 'test-key', contextAware: false });
 				const result = await translator.translateChunk('Hello');
 
-				expect(result).toBe('こんにちは');
+				expect(result.content).toBe('こんにちは');
 			});
 
 			it('should use Japanese as default target language', async () => {
@@ -375,6 +376,51 @@ describe('translator service', () => {
 				const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
 				const body = JSON.parse(fetchCall[1]?.body as string);
 				expect(body.reasoning_effort).toBe('medium');
+			});
+
+			it('should return token usage in result', async () => {
+				globalThis.fetch = vi.fn().mockResolvedValue({
+					ok: true,
+					json: () =>
+						Promise.resolve({
+							id: 'chatcmpl-123',
+							choices: [{ message: { content: '{"translation": "こんにちは"}' } }],
+							usage: {
+								prompt_tokens: 100,
+								completion_tokens: 50,
+								total_tokens: 150
+							}
+						})
+				});
+
+				const translator = createTranslator({ apiKey: 'test-key' });
+				const result = await translator.translateChunk('Hello');
+
+				expect(result.content).toBe('こんにちは');
+				expect(result.usage).toBeDefined();
+				expect(result.usage.promptTokens).toBe(100);
+				expect(result.usage.completionTokens).toBe(50);
+				expect(result.usage.totalTokens).toBe(150);
+			});
+
+			it('should handle missing usage data gracefully', async () => {
+				globalThis.fetch = vi.fn().mockResolvedValue({
+					ok: true,
+					json: () =>
+						Promise.resolve({
+							id: 'chatcmpl-123',
+							choices: [{ message: { content: '{"translation": "こんにちは"}' } }]
+							// No usage field
+						})
+				});
+
+				const translator = createTranslator({ apiKey: 'test-key' });
+				const result = await translator.translateChunk('Hello');
+
+				expect(result.content).toBe('こんにちは');
+				expect(result.usage.promptTokens).toBe(0);
+				expect(result.usage.completionTokens).toBe(0);
+				expect(result.usage.totalTokens).toBe(0);
 			});
 		});
 	});

@@ -2,6 +2,12 @@ import { describe, it, expect, vi } from 'vitest';
 import { translateDocument, type TranslationProgress } from '$lib/services/translationEngine';
 import type { Chunk } from '$lib/services/chunker';
 
+// Helper to create mock translation result
+const mockResult = (content: string, usage = { promptTokens: 10, completionTokens: 5, totalTokens: 15 }) => ({
+	content,
+	usage
+});
+
 describe('translationEngine', () => {
 	describe('translateDocument', () => {
 		it('should return empty array for empty chunks', async () => {
@@ -9,6 +15,7 @@ describe('translationEngine', () => {
 			const result = await translateDocument([], translateChunkFn);
 
 			expect(result.translatedChunks).toEqual([]);
+			expect(result.totalUsage.totalTokens).toBe(0);
 			expect(translateChunkFn).not.toHaveBeenCalled();
 		});
 
@@ -16,7 +23,7 @@ describe('translationEngine', () => {
 			const chunks: Chunk[] = [
 				{ index: 0, type: 'header-section', headerLevel: 1, content: 'Hello' }
 			];
-			const translateChunkFn = vi.fn().mockResolvedValue('こんにちは');
+			const translateChunkFn = vi.fn().mockResolvedValue(mockResult('こんにちは'));
 
 			const result = await translateDocument(chunks, translateChunkFn);
 
@@ -33,9 +40,9 @@ describe('translationEngine', () => {
 			];
 			const translateChunkFn = vi
 				.fn()
-				.mockResolvedValueOnce('最初')
-				.mockResolvedValueOnce('二番目')
-				.mockResolvedValueOnce('三番目');
+				.mockResolvedValueOnce(mockResult('最初'))
+				.mockResolvedValueOnce(mockResult('二番目'))
+				.mockResolvedValueOnce(mockResult('三番目'));
 
 			const result = await translateDocument(chunks, translateChunkFn);
 
@@ -47,7 +54,7 @@ describe('translationEngine', () => {
 			const chunks: Chunk[] = [
 				{ index: 0, type: 'header-section', headerLevel: 2, content: 'Test' }
 			];
-			const translateChunkFn = vi.fn().mockResolvedValue('テスト');
+			const translateChunkFn = vi.fn().mockResolvedValue(mockResult('テスト'));
 
 			const result = await translateDocument(chunks, translateChunkFn);
 
@@ -63,8 +70,8 @@ describe('translationEngine', () => {
 			];
 			const translateChunkFn = vi
 				.fn()
-				.mockResolvedValueOnce('最初のチャンク')
-				.mockResolvedValueOnce('二番目のチャンク');
+				.mockResolvedValueOnce(mockResult('最初のチャンク'))
+				.mockResolvedValueOnce(mockResult('二番目のチャンク'));
 
 			await translateDocument(chunks, translateChunkFn);
 
@@ -95,9 +102,9 @@ describe('translationEngine', () => {
 			];
 			const translateChunkFn = vi
 				.fn()
-				.mockResolvedValueOnce('あ')
-				.mockResolvedValueOnce('い')
-				.mockResolvedValueOnce('う');
+				.mockResolvedValueOnce(mockResult('あ'))
+				.mockResolvedValueOnce(mockResult('い'))
+				.mockResolvedValueOnce(mockResult('う'));
 
 			await translateDocument(chunks, translateChunkFn);
 
@@ -112,7 +119,7 @@ describe('translationEngine', () => {
 				{ index: 0, type: 'header-section', headerLevel: 1, content: 'A' },
 				{ index: 1, type: 'header-section', headerLevel: 1, content: 'B' }
 			];
-			const translateChunkFn = vi.fn().mockResolvedValue('翻訳');
+			const translateChunkFn = vi.fn().mockResolvedValue(mockResult('翻訳'));
 			const onProgress = vi.fn();
 
 			await translateDocument(chunks, translateChunkFn, { onProgress });
@@ -127,7 +134,7 @@ describe('translationEngine', () => {
 				{ index: 2, type: 'header-section', headerLevel: 1, content: 'C' },
 				{ index: 3, type: 'header-section', headerLevel: 1, content: 'D' }
 			];
-			const translateChunkFn = vi.fn().mockResolvedValue('翻訳');
+			const translateChunkFn = vi.fn().mockResolvedValue(mockResult('翻訳'));
 			const progressUpdates: TranslationProgress[] = [];
 			const onProgress = (progress: TranslationProgress) => {
 				progressUpdates.push({ ...progress });
@@ -149,7 +156,7 @@ describe('translationEngine', () => {
 				{ index: 0, type: 'header-section', headerLevel: 1, content: 'A' },
 				{ index: 1, type: 'header-section', headerLevel: 1, content: 'B' }
 			];
-			const translateChunkFn = vi.fn().mockResolvedValue('翻訳');
+			const translateChunkFn = vi.fn().mockResolvedValue(mockResult('翻訳'));
 			const progressUpdates: TranslationProgress[] = [];
 			const onProgress = (progress: TranslationProgress) => {
 				progressUpdates.push({ ...progress });
@@ -162,6 +169,43 @@ describe('translationEngine', () => {
 				expect(progress.estimatedTimeRemaining).toBeDefined();
 				expect(typeof progress.estimatedTimeRemaining).toBe('number');
 			});
+		});
+
+		it('should accumulate token usage across chunks', async () => {
+			const chunks: Chunk[] = [
+				{ index: 0, type: 'header-section', headerLevel: 1, content: 'A' },
+				{ index: 1, type: 'header-section', headerLevel: 1, content: 'B' }
+			];
+			const translateChunkFn = vi
+				.fn()
+				.mockResolvedValueOnce(mockResult('あ', { promptTokens: 100, completionTokens: 50, totalTokens: 150 }))
+				.mockResolvedValueOnce(mockResult('い', { promptTokens: 80, completionTokens: 40, totalTokens: 120 }));
+
+			const result = await translateDocument(chunks, translateChunkFn);
+
+			expect(result.totalUsage.promptTokens).toBe(180);
+			expect(result.totalUsage.completionTokens).toBe(90);
+			expect(result.totalUsage.totalTokens).toBe(270);
+		});
+
+		it('should include token usage in progress updates', async () => {
+			const chunks: Chunk[] = [
+				{ index: 0, type: 'header-section', headerLevel: 1, content: 'A' },
+				{ index: 1, type: 'header-section', headerLevel: 1, content: 'B' }
+			];
+			const translateChunkFn = vi
+				.fn()
+				.mockResolvedValueOnce(mockResult('あ', { promptTokens: 100, completionTokens: 50, totalTokens: 150 }))
+				.mockResolvedValueOnce(mockResult('い', { promptTokens: 80, completionTokens: 40, totalTokens: 120 }));
+			const progressUpdates: TranslationProgress[] = [];
+			const onProgress = (progress: TranslationProgress) => {
+				progressUpdates.push({ ...progress });
+			};
+
+			await translateDocument(chunks, translateChunkFn, { onProgress });
+
+			expect(progressUpdates[0].tokensUsed.totalTokens).toBe(150);
+			expect(progressUpdates[1].tokensUsed.totalTokens).toBe(270);
 		});
 
 		it('should handle translation errors gracefully', async () => {

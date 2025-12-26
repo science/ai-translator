@@ -63,6 +63,21 @@ export const DEFAULT_PHASES: WorkflowPhase[] = [
 	{ id: 'translate', label: 'Translate', status: 'pending' }
 ];
 
+// Phases without convert (for markdown input)
+export const MARKDOWN_PHASES: WorkflowPhase[] = [
+	{ id: 'cleanup', label: 'Cleanup', status: 'pending' },
+	{ id: 'translate', label: 'Translate', status: 'pending' }
+];
+
+/**
+ * Creates workflow phases based on whether to skip the convert phase.
+ * Use skipConvert=true when starting from markdown input (no PDF conversion needed).
+ */
+export function createWorkflowPhases(skipConvert: boolean = false): WorkflowPhase[] {
+	const source = skipConvert ? MARKDOWN_PHASES : DEFAULT_PHASES;
+	return source.map((phase) => ({ ...phase }));
+}
+
 // Default settings
 export const DEFAULT_CLEANUP_SETTINGS: CleanupSettings = {
 	model: DEFAULT_MODEL,

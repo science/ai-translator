@@ -4,10 +4,13 @@
 	import {
 		type StoredDocument,
 		saveDocument,
-		generateDocumentId
+		generateDocumentId,
+		getAllDocuments,
+		getDocument
 	} from '$lib/storage';
 	import {
 		type ProgressState,
+		type CostData,
 		createDeterminateProgress,
 		createIndeterminateProgress,
 		updateProgress,
@@ -23,6 +26,7 @@
 		type CleanupSettings,
 		type TranslationSettings,
 		createWorkflowState,
+		createWorkflowPhases,
 		startWorkflow,
 		updatePhaseStatus,
 		isWorkflowComplete,
@@ -30,7 +34,7 @@
 		getElapsedTime,
 		formatElapsedTime
 	} from '$lib/workflow';
-	import { runWorkflow, type WorkflowResult } from '$lib/services/workflowEngine';
+	import { runWorkflow, type WorkflowResult, type UsageByPhase } from '$lib/services/workflowEngine';
 	import { exportMarkdownAsDocx } from '$lib/services/docxExporter';
 	import { getLanguageHistory, addLanguageToHistory } from '$lib/languageHistory';
 	import { getLanguageCode } from '$lib/languageCode';
@@ -40,10 +44,27 @@
 		is5SeriesModel as checkIs5Series,
 		getReasoningEffortOptions
 	} from '$lib/models';
+	import { calculateCost, estimateWorkflowCost, getReasoningMultiplier, DEFAULT_REASONING_MULTIPLIERS, type TokenUsage, type WorkflowCostEstimate, type ReasoningMultipliers } from '$lib/services/costCalculator';
+
+	// File type detection
+	type UploadedFileType = 'pdf' | 'markdown';
+
+	function getFileType(file: File): UploadedFileType {
+		if (file.type === 'application/pdf') return 'pdf';
+		const ext = file.name.split('.').pop()?.toLowerCase();
+		if (ext === 'pdf') return 'pdf';
+		return 'markdown'; // .md, .markdown, .txt all treated as markdown
+	}
+
+	function isAcceptedFile(file: File): boolean {
+		const ext = file.name.split('.').pop()?.toLowerCase();
+		return file.type === 'application/pdf' || ext === 'pdf' || ext === 'md' || ext === 'markdown';
+	}
 
 	// State
 	let workflowState = $state<WorkflowState>(createWorkflowState());
 	let selectedFile = $state<File | null>(null);
+	let selectedFileType = $state<UploadedFileType | null>(null);
 	let isDragging = $state(false);
 	let error = $state('');
 	let currentProgress = $state<ProgressState>(resetProgress());
@@ -65,10 +86,51 @@
 	let languageTouched = $state(false);
 	let showLanguageDropdown = $state(false);
 
-	// Derived state - now requires target language
-	let canStartWorkflow = $derived(selectedFile !== null && !workflowState.isRunning && !!targetLanguage.trim());
+	// Document selection state
+	interface DocumentListItem {
+		id: string;
+		name: string;
+		type: 'pdf' | 'markdown' | 'text';
+		size: number;
+		uploadedAt: string;
+	}
+	let documents = $state<DocumentListItem[]>([]);
+	let selectedDocId = $state('');
+	let selectedDocContent = $state<string | null>(null);
+
+	// Cost estimation state
+	let costEstimate = $state<WorkflowCostEstimate | null>(null);
+	let isConverting = $state(false);
+	let reasoningMultipliers = $state<ReasoningMultipliers>({ ...DEFAULT_REASONING_MULTIPLIERS });
+
+	// Derived state - now requires target language and either file or selected document
+	let hasDocumentInput = $derived(selectedFile !== null || selectedDocId !== '');
+	let canStartWorkflow = $derived(hasDocumentInput && !workflowState.isRunning && !!targetLanguage.trim());
 	let showProgress = $derived(workflowState.isRunning || isWorkflowComplete(workflowState));
 	let showResults = $derived(isWorkflowComplete(workflowState) && workflowResult !== null);
+
+	// Document type detection for selected document
+	let selectedDocInfo = $derived(documents.find(d => d.id === selectedDocId));
+	let selectedDocType = $derived<UploadedFileType | null>(
+		selectedFile ? getFileType(selectedFile) :
+		selectedDocInfo ? (selectedDocInfo.type === 'pdf' ? 'pdf' : 'markdown') :
+		null
+	);
+	let needsConversion = $derived(selectedDocType === 'pdf');
+	let canShowEstimate = $derived(
+		hasDocumentInput &&
+		!!targetLanguage.trim() &&
+		(selectedDocType === 'markdown' || selectedDocContent !== null)
+	);
+	let showConvertButton = $derived(
+		needsConversion &&
+		!costEstimate &&
+		!isConverting &&
+		selectedDocId !== '' // Only for selected documents, not file uploads
+	);
+
+	// Filter documents to show PDF and markdown only
+	let selectableDocuments = $derived(documents.filter(d => d.type === 'pdf' || d.type === 'markdown'));
 
 	// Check if the selected model is a 5-series model (supports reasoning effort)
 	let isCleanup5Series = $derived(checkIs5Series(cleanupModel));
@@ -78,8 +140,102 @@
 	let cleanupReasoningOptions = $derived(getReasoningEffortOptions(cleanupModel) || []);
 	let translationReasoningOptions = $derived(getReasoningEffortOptions(translationModel) || []);
 
+	// Compute active reasoning multipliers for display
+	let cleanupReasoningMultiplier = $derived(
+		isCleanup5Series ? getReasoningMultiplier(cleanupReasoningEffort, reasoningMultipliers) : 1.0
+	);
+	let translationReasoningMultiplier = $derived(
+		isTranslation5Series ? getReasoningMultiplier(translationReasoningEffort, reasoningMultipliers) : 1.0
+	);
+	let showCleanupReasoningIndicator = $derived(cleanupReasoningMultiplier > 1.0);
+	let showTranslationReasoningIndicator = $derived(translationReasoningMultiplier > 1.0);
+
+	async function loadDocuments() {
+		const docs = await getAllDocuments();
+		documents = docs.map((doc) => ({
+			id: doc.id,
+			name: doc.name,
+			type: doc.type,
+			size: doc.size,
+			uploadedAt: doc.uploadedAt
+		}));
+	}
+
+	async function handleDocumentSelect(event: Event) {
+		const select = event.target as HTMLSelectElement;
+		const docId = select.value;
+
+		// Clear file selection when document is selected
+		if (docId) {
+			selectedFile = null;
+			selectedFileType = null;
+		}
+
+		selectedDocId = docId;
+		selectedDocContent = null;
+		costEstimate = null;
+
+		if (!docId) return;
+
+		// Load document content
+		const doc = await getDocument(docId);
+		if (!doc) return;
+
+		// For markdown, we can calculate estimate immediately
+		if (doc.type === 'markdown') {
+			let content: string;
+			if (typeof doc.content === 'string') {
+				content = doc.content;
+			} else {
+				content = await doc.content.text();
+			}
+			selectedDocContent = content;
+			selectedFileType = 'markdown';
+			updateCostEstimate(content);
+		} else {
+			selectedFileType = 'pdf';
+			// For PDF, user needs to click "Convert & Estimate" button
+		}
+	}
+
+	function updateCostEstimate(content: string) {
+		if (!content) {
+			costEstimate = null;
+			return;
+		}
+		costEstimate = estimateWorkflowCost(
+			content,
+			cleanupModel,
+			translationModel,
+			Math.min(cleanupChunkSize, translationChunkSize),
+			cleanupReasoningEffort,
+			translationReasoningEffort,
+			reasoningMultipliers
+		);
+	}
+
+	// Re-estimate cost when models, chunk sizes, or reasoning efforts change
+	$effect(() => {
+		// Only recalculate if we have content loaded
+		if (browser && selectedDocContent) {
+			// Directly use reactive variables so they're tracked
+			costEstimate = estimateWorkflowCost(
+				selectedDocContent,
+				cleanupModel,
+				translationModel,
+				Math.min(cleanupChunkSize, translationChunkSize),
+				cleanupReasoningEffort,
+				translationReasoningEffort,
+				reasoningMultipliers
+			);
+		}
+	});
+
 	onMount(async () => {
 		if (browser) {
+			// Load documents from IndexedDB
+			await loadDocuments();
+
 			// Load saved settings from localStorage
 			const savedCleanupModel = localStorage.getItem('default_model');
 			const savedChunkSize = localStorage.getItem('default_chunk_size');
@@ -101,6 +257,17 @@
 			}
 			if (savedContextAware !== null) {
 				translationContextAware = savedContextAware === 'true';
+			}
+
+			// Load reasoning multipliers from localStorage
+			const storedMultipliers = localStorage.getItem('reasoning_multipliers');
+			if (storedMultipliers) {
+				try {
+					const parsed = JSON.parse(storedMultipliers);
+					reasoningMultipliers = { ...DEFAULT_REASONING_MULTIPLIERS, ...parsed };
+				} catch {
+					// Invalid JSON, use defaults
+				}
 			}
 
 			// Load language history
@@ -130,11 +297,23 @@
 		const files = e.dataTransfer?.files;
 		if (files && files.length > 0) {
 			const file = files[0];
-			if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+			if (isAcceptedFile(file)) {
 				selectedFile = file;
+				selectedFileType = getFileType(file);
+				// Clear document selection when file is uploaded
+				selectedDocId = '';
+				selectedDocContent = null;
+				costEstimate = null;
 				error = '';
+				// For markdown files, calculate estimate immediately
+				if (selectedFileType === 'markdown') {
+					file.text().then(content => {
+						selectedDocContent = content;
+						updateCostEstimate(content);
+					});
+				}
 			} else {
-				error = 'Please select a PDF file';
+				error = 'Please select a PDF or Markdown file';
 			}
 		}
 	}
@@ -143,17 +322,30 @@
 		const input = e.target as HTMLInputElement;
 		const file = input.files?.[0];
 		if (file) {
-			if (file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')) {
+			if (isAcceptedFile(file)) {
 				selectedFile = file;
+				selectedFileType = getFileType(file);
+				// Clear document selection when file is uploaded
+				selectedDocId = '';
+				selectedDocContent = null;
+				costEstimate = null;
 				error = '';
+				// For markdown files, calculate estimate immediately
+				if (selectedFileType === 'markdown') {
+					file.text().then(content => {
+						selectedDocContent = content;
+						updateCostEstimate(content);
+					});
+				}
 			} else {
-				error = 'Please select a PDF file';
+				error = 'Please select a PDF or Markdown file';
 			}
 		}
 	}
 
 	async function handleStartWorkflow() {
-		if (!selectedFile) return;
+		// Need either a file or a selected document
+		if (!selectedFile && !selectedDocId) return;
 
 		// Get API key
 		const apiKey = localStorage.getItem('openai_api_key');
@@ -162,9 +354,18 @@
 			return;
 		}
 
-		// Reset state
+		// Determine the document type
+		const isMarkdownInput = selectedDocType === 'markdown';
+
+		// Reset state with correct phases
 		error = '';
 		workflowResult = null;
+
+		// Update workflow state with correct phases based on file type
+		workflowState = {
+			...createWorkflowState(),
+			phases: createWorkflowPhases(isMarkdownInput)
+		};
 		workflowState = startWorkflow(workflowState);
 
 		const cleanupSettings: CleanupSettings = {
@@ -182,15 +383,68 @@
 		};
 
 		try {
-			// Read file as ArrayBuffer
-			const pdfBuffer = await selectedFile.arrayBuffer();
+			// Read content based on source (file or selected document)
+			let workflowOptions: Parameters<typeof runWorkflow>[0];
 
-			// Run the workflow
+			if (selectedDocContent && isMarkdownInput) {
+				// Use already-loaded markdown content from selected document
+				workflowOptions = {
+					markdownContent: selectedDocContent,
+					apiKey,
+					cleanupSettings,
+					translationSettings,
+					callbacks: {}
+				};
+			} else if (selectedFile && isMarkdownInput) {
+				// Read markdown file as text
+				const markdownContent = await selectedFile.text();
+				workflowOptions = {
+					markdownContent,
+					apiKey,
+					cleanupSettings,
+					translationSettings,
+					callbacks: {}
+				};
+			} else if (selectedFile) {
+				// Read PDF file as ArrayBuffer
+				const pdfBuffer = await selectedFile.arrayBuffer();
+				workflowOptions = {
+					pdfBuffer: new Uint8Array(pdfBuffer),
+					apiKey,
+					cleanupSettings,
+					translationSettings,
+					callbacks: {}
+				};
+			} else if (selectedDocId) {
+				// Load PDF from selected document
+				const doc = await getDocument(selectedDocId);
+				if (!doc) {
+					error = 'Document not found';
+					return;
+				}
+				let pdfBuffer: ArrayBuffer;
+				if (doc.content instanceof Blob) {
+					pdfBuffer = await doc.content.arrayBuffer();
+				} else {
+					// String content - shouldn't happen for PDF but handle gracefully
+					error = 'Invalid document format';
+					return;
+				}
+				workflowOptions = {
+					pdfBuffer: new Uint8Array(pdfBuffer),
+					apiKey,
+					cleanupSettings,
+					translationSettings,
+					callbacks: {}
+				};
+			} else {
+				error = 'No document selected';
+				return;
+			}
+
+			// Run the workflow with appropriate callbacks
 			const result = await runWorkflow({
-				pdfBuffer: new Uint8Array(pdfBuffer),
-				apiKey,
-				cleanupSettings,
-				translationSettings,
+				...workflowOptions,
 				callbacks: {
 					onPhaseStart: (phaseId) => {
 						workflowState = updatePhaseStatus(workflowState, phaseId, 'in_progress');
@@ -206,7 +460,21 @@
 						}
 					},
 					onPhaseProgress: (phaseId, progress) => {
-						if (currentProgress.type === 'determinate') {
+						if (currentProgress.type === 'determinate' && 'tokensUsed' in progress) {
+							// Calculate cost based on phase model
+							const phaseModel = phaseId === 'cleanup' ? cleanupModel : translationModel;
+							const actualCostSoFar = calculateCost(progress.tokensUsed, phaseModel);
+							const progressCostData: CostData = {
+								tokensUsed: progress.tokensUsed,
+								estimatedCost: 0, // We don't have pre-estimates for workflow yet
+								actualCostSoFar
+							};
+							currentProgress = updateProgress(currentProgress, {
+								percentage: progress.percentComplete,
+								message: `Processing chunk ${progress.current}/${progress.total}...`,
+								costData: progressCostData
+							});
+						} else if (currentProgress.type === 'determinate') {
 							currentProgress = updateProgress(currentProgress, {
 								percentage: progress.percentComplete,
 								message: `Processing chunk ${progress.current}/${progress.total}...`
@@ -256,20 +524,25 @@
 			languageHistory = getLanguageHistory();
 
 			// Save all output documents
-			const baseName = selectedFile.name.replace(/\.pdf$/i, '');
+			const baseName = selectedFile.name.replace(/\.(pdf|md|markdown)$/i, '');
 			const langCode = getLanguageCode(targetLanguage);
 
-			// Save converted markdown
-			const convertedDoc: StoredDocument = {
-				id: generateDocumentId(),
-				name: `${baseName}-converted.md`,
-				type: 'markdown',
-				content: result.markdown,
-				size: new Blob([result.markdown]).size,
-				uploadedAt: new Date().toISOString(),
-				phase: 'converted'
-			};
-			await saveDocument(convertedDoc);
+			let sourceDocId: string | undefined;
+
+			// Only save converted markdown for PDF input (not for markdown input)
+			if (!isMarkdownInput) {
+				const convertedDoc: StoredDocument = {
+					id: generateDocumentId(),
+					name: `${baseName}-converted.md`,
+					type: 'markdown',
+					content: result.markdown,
+					size: new Blob([result.markdown]).size,
+					uploadedAt: new Date().toISOString(),
+					phase: 'converted'
+				};
+				await saveDocument(convertedDoc);
+				sourceDocId = convertedDoc.id;
+			}
 
 			// Save cleaned markdown
 			const cleanedDoc: StoredDocument = {
@@ -280,7 +553,7 @@
 				size: new Blob([result.cleaned]).size,
 				uploadedAt: new Date().toISOString(),
 				phase: 'cleaned',
-				sourceDocumentId: convertedDoc.id
+				...(sourceDocId ? { sourceDocumentId: sourceDocId } : {})
 			};
 			await saveDocument(cleanedDoc);
 
@@ -321,6 +594,7 @@
 	function handleStartOver() {
 		workflowState = createWorkflowState();
 		selectedFile = null;
+		selectedFileType = null;
 		workflowResult = null;
 		currentProgress = resetProgress();
 		error = '';
@@ -347,11 +621,11 @@
 	<p class="text-gray-600 mb-6">Convert PDF to your target language in one automated process</p>
 
 	{#if !showResults}
-		<!-- Step 1: Upload PDF -->
+		<!-- Step 1: Upload Document -->
 		<div class="bg-white rounded-lg border border-gray-200 p-6 mb-6">
 			<h2 class="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
 				<span class="flex items-center justify-center w-6 h-6 rounded-full bg-blue-100 text-blue-700 text-sm font-bold">1</span>
-				Upload PDF
+				Upload Document
 			</h2>
 
 			<div
@@ -371,7 +645,7 @@
 				<input
 					type="file"
 					id="file-input"
-					accept=".pdf,application/pdf"
+					accept=".pdf,.md,.markdown,application/pdf,text/markdown"
 					onchange={handleFileSelect}
 					class="hidden"
 					disabled={workflowState.isRunning}
@@ -389,9 +663,95 @@
 					<p class="mt-2 text-sm text-gray-600">
 						<span class="font-semibold text-blue-600">Click to upload</span> or drag and drop
 					</p>
-					<p class="text-xs text-gray-500">PDF files only</p>
+					<p class="text-xs text-gray-500">PDF or Markdown files</p>
 				{/if}
 			</div>
+
+			<!-- Document Selection Dropdown -->
+			<div class="mt-4 pt-4 border-t border-gray-200">
+				<p class="text-sm text-gray-500 text-center mb-2">Or select from existing documents:</p>
+				<select
+					data-testid="document-select"
+					bind:value={selectedDocId}
+					onchange={handleDocumentSelect}
+					disabled={workflowState.isRunning || selectableDocuments.length === 0}
+					class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 text-sm"
+				>
+					{#if selectableDocuments.length === 0}
+						<option value="">No documents available</option>
+					{:else}
+						<option value="">Choose a document...</option>
+						{#each selectableDocuments as doc (doc.id)}
+							<option value={doc.id}>{doc.name} ({doc.type.toUpperCase()})</option>
+						{/each}
+					{/if}
+				</select>
+			</div>
+
+			<!-- Cost Estimate Display -->
+			{#if costEstimate}
+				<div data-testid="cost-estimate" class="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+					<h3 class="text-sm font-semibold text-blue-800 mb-2">Estimated Cost</h3>
+					<div class="grid grid-cols-2 gap-2 text-sm">
+						<div>
+							<span class="text-gray-600">Cleanup:</span>
+							<span class="font-medium text-gray-900">${costEstimate.cleanup.estimatedCostUsd.toFixed(2)}</span>
+							{#if showCleanupReasoningIndicator}
+								<span data-testid="cleanup-reasoning-indicator" class="text-xs text-blue-600 ml-1">(×{cleanupReasoningMultiplier} reasoning)</span>
+							{/if}
+						</div>
+						<div>
+							<span class="text-gray-600">Translation:</span>
+							<span class="font-medium text-gray-900">${costEstimate.translate.estimatedCostUsd.toFixed(2)}</span>
+							{#if showTranslationReasoningIndicator}
+								<span data-testid="translation-reasoning-indicator" class="text-xs text-blue-600 ml-1">(×{translationReasoningMultiplier} reasoning)</span>
+							{/if}
+						</div>
+						<div class="col-span-2 pt-2 border-t border-blue-200">
+							<span class="text-gray-700 font-medium">Combined:</span>
+							<span class="font-bold text-blue-800">${costEstimate.totalCostUsd.toFixed(2)}</span>
+							<span class="text-gray-500 ml-2">({costEstimate.totalTokens.toLocaleString()} tokens)</span>
+						</div>
+					</div>
+				</div>
+			{/if}
+
+			<!-- Convert & Estimate Button for PDF -->
+			{#if showConvertButton}
+				<div class="mt-4">
+					<button
+						data-testid="convert-estimate-button"
+						onclick={async () => {
+							// TODO: Implement PDF conversion for cost estimation
+							isConverting = true;
+							error = '';
+							try {
+								const doc = await getDocument(selectedDocId);
+								if (!doc) {
+									error = 'Document not found';
+									return;
+								}
+								// For now, we'll need to implement PDF conversion here
+								// This is a placeholder - the actual conversion will be implemented
+								error = 'PDF conversion for cost estimation is not yet implemented';
+							} finally {
+								isConverting = false;
+							}
+						}}
+						disabled={isConverting || workflowState.isRunning}
+						class="w-full px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+					>
+						{#if isConverting}
+							Converting PDF...
+						{:else}
+							Convert & Estimate Cost
+						{/if}
+					</button>
+					<p class="text-xs text-gray-500 mt-1 text-center">
+						Converts PDF to markdown to calculate cost estimate
+					</p>
+				</div>
+			{/if}
 		</div>
 
 		<!-- Step 2: Cleanup Settings -->
@@ -427,6 +787,7 @@
 					<div>
 						<label class="block text-sm font-medium text-gray-700 mb-1">Reasoning Effort</label>
 						<select
+							data-testid="cleanup-reasoning-select"
 							bind:value={cleanupReasoningEffort}
 							disabled={workflowState.isRunning}
 							class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 text-sm"
@@ -615,23 +976,53 @@
 
 	{#if showResults && workflowResult}
 		{@const langCode = getLanguageCode(targetLanguage)}
+		{@const isMarkdownInput = selectedFileType === 'markdown'}
+		{@const baseName = selectedFile?.name.replace(/\.(pdf|md|markdown)$/i, '')}
 		<!-- Results Section -->
 		<div class="mt-6 bg-white rounded-lg border border-gray-200 p-6">
 			<h2 class="text-lg font-semibold text-gray-900 mb-4">Output Documents</h2>
 
+			{#if workflowResult.totalUsage}
+				{@const cleanupCost = calculateCost(workflowResult.usageByPhase.cleanup, cleanupModel)}
+				{@const translateCost = calculateCost(workflowResult.usageByPhase.translate, translationModel)}
+				{@const totalCost = cleanupCost + translateCost}
+				<div data-testid="final-cost" class="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+					<h3 class="text-sm font-medium text-green-800 mb-2">Workflow Complete</h3>
+					<div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+						<div>
+							<span class="text-green-600">Total tokens:</span>
+							<span class="font-medium text-green-800 ml-1">{workflowResult.totalUsage.totalTokens.toLocaleString()}</span>
+						</div>
+						<div>
+							<span class="text-green-600">Cleanup cost:</span>
+							<span class="font-medium text-green-800 ml-1">${cleanupCost.toFixed(2)}</span>
+						</div>
+						<div>
+							<span class="text-green-600">Translation cost:</span>
+							<span class="font-medium text-green-800 ml-1">${translateCost.toFixed(2)}</span>
+						</div>
+						<div>
+							<span class="text-green-600">Total cost:</span>
+							<span class="font-bold text-green-800 ml-1">${totalCost.toFixed(2)}</span>
+						</div>
+					</div>
+				</div>
+			{/if}
+
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
 				{#each [
-					{ label: 'Converted Markdown', key: 'markdown', filename: `${selectedFile?.name.replace(/\.pdf$/i, '')}-converted.md` },
-					{ label: 'Cleaned Markdown', key: 'cleaned', filename: `${selectedFile?.name.replace(/\.pdf$/i, '')}-cleaned.md` },
-					{ label: 'Target Language Only', key: 'japaneseOnly', filename: `${selectedFile?.name.replace(/\.pdf$/i, '')}-${langCode}.md` },
-					{ label: 'Bilingual', key: 'bilingual', filename: `${selectedFile?.name.replace(/\.pdf$/i, '')}-bilingual.md` }
+					// Skip "Original/Converted Markdown" for markdown input since user already has the source
+					...(isMarkdownInput ? [] : [{ label: 'Converted Markdown', key: 'markdown' as const, filename: `${baseName}-converted.md` }]),
+					{ label: 'Cleaned Markdown', key: 'cleaned' as const, filename: `${baseName}-cleaned.md` },
+					{ label: 'Target Language Only', key: 'japaneseOnly' as const, filename: `${baseName}-${langCode}.md` },
+					{ label: 'Bilingual', key: 'bilingual' as const, filename: `${baseName}-bilingual.md` }
 				] as output}
 					<div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
 						<span class="text-sm font-medium text-gray-700">{output.label}</span>
 						<div class="flex gap-2">
 							<button
 								data-testid="download-md-{output.key}"
-								onclick={() => workflowResult && downloadResult(workflowResult[output.key as keyof WorkflowResult], output.filename)}
+								onclick={() => workflowResult && downloadResult(workflowResult[output.key], output.filename)}
 								class="px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors"
 								title="Download as Markdown"
 							>
@@ -639,7 +1030,7 @@
 							</button>
 							<button
 								data-testid="download-docx-{output.key}"
-								onclick={() => workflowResult && downloadAsDocx(workflowResult[output.key as keyof WorkflowResult], output.filename)}
+								onclick={() => workflowResult && downloadAsDocx(workflowResult[output.key], output.filename)}
 								class="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
 								title="Download as Word document"
 							>

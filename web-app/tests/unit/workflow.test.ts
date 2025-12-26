@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
 	createWorkflowState,
+	createWorkflowPhases,
 	updatePhaseStatus,
 	getCurrentPhase,
 	advancePhase,
@@ -283,6 +284,47 @@ describe('Workflow Utilities', () => {
 
 		it('formats single minute', () => {
 			expect(formatElapsedTime(61000)).toBe('1 minute 1 second');
+		});
+	});
+
+	describe('createWorkflowPhases', () => {
+		it('returns 3 phases when skipConvert is false', () => {
+			const phases = createWorkflowPhases(false);
+
+			expect(phases).toHaveLength(3);
+			expect(phases[0].id).toBe('convert');
+			expect(phases[1].id).toBe('cleanup');
+			expect(phases[2].id).toBe('translate');
+		});
+
+		it('returns 2 phases when skipConvert is true', () => {
+			const phases = createWorkflowPhases(true);
+
+			expect(phases).toHaveLength(2);
+			expect(phases[0].id).toBe('cleanup');
+			expect(phases[1].id).toBe('translate');
+		});
+
+		it('returns phases with correct labels when skipping convert', () => {
+			const phases = createWorkflowPhases(true);
+
+			expect(phases[0].label).toBe('Cleanup');
+			expect(phases[1].label).toBe('Translate');
+		});
+
+		it('returns phases with pending status', () => {
+			const phases = createWorkflowPhases(true);
+
+			phases.forEach((phase) => {
+				expect(phase.status).toBe('pending');
+			});
+		});
+
+		it('returns default 3-phase array when called with no argument', () => {
+			const phases = createWorkflowPhases();
+
+			expect(phases).toHaveLength(3);
+			expect(phases[0].id).toBe('convert');
 		});
 	});
 

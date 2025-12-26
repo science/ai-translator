@@ -7,6 +7,7 @@ import { createRectifier } from './rectifier';
 import { rectifyDocument, type RectificationProgress } from './rectificationEngine';
 import { createTranslator } from './translator';
 import { translateDocument, type TranslationProgress } from './translationEngine';
+import type { TokenUsage } from './costCalculator';
 import type { CleanupSettings, TranslationSettings, WorkflowPhaseId } from '$lib/workflow';
 
 // Progress type that can be from either engine
@@ -21,8 +22,10 @@ export interface PhaseCallbacks {
 }
 
 // Options for running the complete workflow
+// Either pdfBuffer OR markdownContent must be provided, not both
 export interface WorkflowOptions {
-	pdfBuffer: Uint8Array | ArrayBuffer;
+	pdfBuffer?: Uint8Array | ArrayBuffer;
+	markdownContent?: string;
 	apiKey: string;
 	cleanupSettings: CleanupSettings;
 	translationSettings: TranslationSettings;
@@ -35,12 +38,20 @@ export interface TranslationOutputs {
 	bilingual: string;
 }
 
+// Token usage breakdown by phase
+export interface UsageByPhase {
+	cleanup: TokenUsage;
+	translate: TokenUsage;
+}
+
 // Result of the complete workflow
 export interface WorkflowResult {
 	markdown: string;
 	cleaned: string;
 	japaneseOnly: string;
 	bilingual: string;
+	totalUsage: TokenUsage;
+	usageByPhase: UsageByPhase;
 }
 
 /**
@@ -76,15 +87,25 @@ function assembleRectified(
 
 /**
  * Runs the complete workflow: PDF → Markdown → Cleanup → Translation
+ * For markdown input, skips the convert phase and starts with cleanup.
  */
 export async function runWorkflow(options: WorkflowOptions): Promise<WorkflowResult> {
 	const {
 		pdfBuffer,
+		markdownContent,
 		apiKey,
 		cleanupSettings,
 		translationSettings,
 		callbacks
 	} = options;
+
+	// Validate input: must provide exactly one of pdfBuffer or markdownContent
+	if (!pdfBuffer && !markdownContent) {
+		throw new Error('Either pdfBuffer or markdownContent must be provided');
+	}
+	if (pdfBuffer && markdownContent) {
+		throw new Error('Cannot provide both pdfBuffer and markdownContent');
+	}
 
 	const {
 		onPhaseStart,
@@ -98,20 +119,32 @@ export async function runWorkflow(options: WorkflowOptions): Promise<WorkflowRes
 	let japaneseOnly = '';
 	let bilingual = '';
 
-	// ============================================
-	// Phase 1: Convert PDF to Markdown
-	// ============================================
-	try {
-		onPhaseStart?.('convert');
+	// Track token usage by phase
+	let cleanupUsage: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
+	let translateUsage: TokenUsage = { promptTokens: 0, completionTokens: 0, totalTokens: 0 };
 
-		const converter = await createPdfConverter();
-		markdown = await converter.convertToMarkdown(pdfBuffer);
+	// Determine if we're starting from markdown (skip convert phase)
+	const isMarkdownInput = !!markdownContent;
 
-		onPhaseComplete?.('convert', markdown);
-	} catch (error) {
-		const err = error instanceof Error ? error : new Error(String(error));
-		onPhaseError?.('convert', err);
-		throw err;
+	// ============================================
+	// Phase 1: Convert PDF to Markdown (skip if markdown input)
+	// ============================================
+	if (!isMarkdownInput) {
+		try {
+			onPhaseStart?.('convert');
+
+			const converter = await createPdfConverter();
+			markdown = await converter.convertToMarkdown(pdfBuffer!);
+
+			onPhaseComplete?.('convert', markdown);
+		} catch (error) {
+			const err = error instanceof Error ? error : new Error(String(error));
+			onPhaseError?.('convert', err);
+			throw err;
+		}
+	} else {
+		// Use provided markdown content directly
+		markdown = markdownContent!;
 	}
 
 	// ============================================
@@ -131,7 +164,7 @@ export async function runWorkflow(options: WorkflowOptions): Promise<WorkflowRes
 		});
 
 		// Run rectification with progress tracking
-		const { rectifiedChunks } = await rectifyDocument(
+		const { rectifiedChunks, totalUsage } = await rectifyDocument(
 			cleanupChunks,
 			rectifier.rectifyChunk,
 			{
@@ -140,6 +173,9 @@ export async function runWorkflow(options: WorkflowOptions): Promise<WorkflowRes
 				}
 			}
 		);
+
+		// Capture cleanup token usage
+		cleanupUsage = totalUsage;
 
 		// Assemble cleaned document
 		cleaned = assembleRectified(rectifiedChunks);
@@ -170,7 +206,7 @@ export async function runWorkflow(options: WorkflowOptions): Promise<WorkflowRes
 		});
 
 		// Run translation with progress tracking
-		const { translatedChunks } = await translateDocument(
+		const { translatedChunks, totalUsage: translationTotalUsage } = await translateDocument(
 			translateChunks,
 			translator.translateChunk,
 			{
@@ -179,6 +215,9 @@ export async function runWorkflow(options: WorkflowOptions): Promise<WorkflowRes
 				}
 			}
 		);
+
+		// Capture translation token usage
+		translateUsage = translationTotalUsage;
 
 		// Assemble both output versions
 		japaneseOnly = assembleJapaneseOnly(translatedChunks);
@@ -191,10 +230,22 @@ export async function runWorkflow(options: WorkflowOptions): Promise<WorkflowRes
 		throw err;
 	}
 
+	// Aggregate token usage
+	const totalUsage: TokenUsage = {
+		promptTokens: cleanupUsage.promptTokens + translateUsage.promptTokens,
+		completionTokens: cleanupUsage.completionTokens + translateUsage.completionTokens,
+		totalTokens: cleanupUsage.totalTokens + translateUsage.totalTokens
+	};
+
 	return {
 		markdown,
 		cleaned,
 		japaneseOnly,
-		bilingual
+		bilingual,
+		totalUsage,
+		usageByPhase: {
+			cleanup: cleanupUsage,
+			translate: translateUsage
+		}
 	};
 }

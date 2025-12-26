@@ -2,7 +2,8 @@
 // Ported from CLI's src/translationEngine.js
 
 import type { Chunk } from './chunker';
-import type { TranslationContext } from './translator';
+import type { TranslationContext, TranslationResult as ChunkTranslationResult } from './translator';
+import type { TokenUsage } from './costCalculator';
 
 export interface TranslatedChunk extends Chunk {
 	originalContent: string;
@@ -14,16 +15,18 @@ export interface TranslationProgress {
 	total: number;
 	percentComplete: number;
 	estimatedTimeRemaining: number;
+	tokensUsed: TokenUsage;
 }
 
 export interface TranslationEngineOptions {
 	onProgress?: (progress: TranslationProgress) => void;
 }
 
-export type TranslateChunkFn = (chunk: string, context: TranslationContext) => Promise<string>;
+export type TranslateChunkFn = (chunk: string, context: TranslationContext) => Promise<ChunkTranslationResult>;
 
 export interface TranslationResult {
 	translatedChunks: TranslatedChunk[];
+	totalUsage: TokenUsage;
 }
 
 /**
@@ -39,6 +42,13 @@ export async function translateDocument(
 	const startTime = Date.now();
 	let previousTranslation: string | null = null;
 
+	// Track total token usage across all chunks
+	const totalUsage: TokenUsage = {
+		promptTokens: 0,
+		completionTokens: 0,
+		totalTokens: 0
+	};
+
 	for (let i = 0; i < chunks.length; i++) {
 		const chunk = chunks[i];
 
@@ -51,7 +61,13 @@ export async function translateDocument(
 			isLastChunk: i === chunks.length - 1
 		};
 
-		const translatedContent = await translateChunkFn(chunk.content, context);
+		const result = await translateChunkFn(chunk.content, context);
+
+		// Extract content and accumulate usage
+		const translatedContent = result.content;
+		totalUsage.promptTokens += result.usage.promptTokens;
+		totalUsage.completionTokens += result.usage.completionTokens;
+		totalUsage.totalTokens += result.usage.totalTokens;
 
 		// Store translation for next chunk's context
 		previousTranslation = translatedContent;
@@ -77,10 +93,11 @@ export async function translateDocument(
 				current,
 				total,
 				percentComplete,
-				estimatedTimeRemaining
+				estimatedTimeRemaining,
+				tokensUsed: { ...totalUsage }
 			});
 		}
 	}
 
-	return { translatedChunks };
+	return { translatedChunks, totalUsage };
 }

@@ -31,7 +31,7 @@ Navigate to **Settings** and enter your OpenAI API key. Need help? Click "How to
 **Option A: One-Step Translation** (Recommended)
 
 1. Go to **One Step Translation** in the sidebar
-2. Upload a PDF file
+2. Upload a PDF or markdown file
 3. Enter your target language (e.g., "Japanese", "formal German")
 4. Click Start and wait for processing
 5. Download your translated document
@@ -50,13 +50,13 @@ Navigate to **Settings** and enter your OpenAI API key. Need help? Click "How to
 
 The flagship feature—a unified pipeline that handles everything:
 
-- Upload PDF → Automatic conversion, cleanup, and translation
+- Upload PDF or markdown → Automatic conversion (if needed), cleanup, and translation
 - Configure cleanup and translation settings independently
 - Track progress through each phase with visual indicators
 - Download as Markdown or Word document
 
 **Outputs:**
-- Converted Markdown (raw PDF extraction)
+- Converted Markdown (raw PDF extraction, PDF input only)
 - Cleaned Markdown (OCR errors fixed)
 - Translated (target language only)
 - Bilingual (alternating original/translated sections)
@@ -123,14 +123,13 @@ GPT-5 models support configurable **reasoning effort** (Low/Medium/High) for bal
 ### Choosing a Workflow
 
 **Use One Step Translation when:**
-- You have a PDF that needs translation
+- You have a PDF or markdown file that needs translation
 - You want the simplest experience
 - You need all output formats
 
 **Use individual pages when:**
 - You only need PDF conversion (no translation)
 - You want to review/edit between steps
-- You're processing markdown files (not PDFs)
 - You need more control over each phase
 
 ### Target Language Tips
