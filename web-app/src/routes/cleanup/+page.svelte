@@ -28,7 +28,7 @@
 	import { chunkBySize } from '$lib/services/chunker';
 	import { createRectifier } from '$lib/services/rectifier';
 	import { rectifyDocument } from '$lib/services/rectificationEngine';
-	import { estimateJobCost, calculateCost, type CostEstimate, type TokenUsage } from '$lib/services/costCalculator';
+	import { estimateJobCost, calculateCost, getReasoningMultiplier, DEFAULT_REASONING_MULTIPLIERS, type CostEstimate, type TokenUsage, type ReasoningMultipliers } from '$lib/services/costCalculator';
 
 	// Display-friendly version for the list
 	interface DocumentListItem {
@@ -52,6 +52,7 @@
 	// Cost tracking state
 	let costEstimate = $state<CostEstimate | null>(null);
 	let finalCost = $state<{ usage: TokenUsage; cost: number } | null>(null);
+	let reasoningMultipliers = $state<ReasoningMultipliers>({ ...DEFAULT_REASONING_MULTIPLIERS });
 
 	onMount(async () => {
 		if (browser) {
@@ -69,6 +70,17 @@
 
 			const storedReasoningEffort = localStorage.getItem('default_reasoning_effort');
 			if (storedReasoningEffort) reasoningEffort = storedReasoningEffort;
+
+			// Load reasoning multipliers from localStorage
+			const storedMultipliers = localStorage.getItem('reasoning_multipliers');
+			if (storedMultipliers) {
+				try {
+					const parsed = JSON.parse(storedMultipliers);
+					reasoningMultipliers = { ...DEFAULT_REASONING_MULTIPLIERS, ...parsed };
+				} catch {
+					// Invalid JSON, use defaults
+				}
+			}
 		}
 	});
 
@@ -92,18 +104,30 @@
 	// Get reasoning effort options based on model type (from centralized config)
 	let reasoningEffortOptions = $derived(getReasoningEffortOptions(model) || []);
 
+	// Compute active reasoning multiplier for display
+	let activeReasoningMultiplier = $derived(
+		is5SeriesModel ? getReasoningMultiplier(reasoningEffort, reasoningMultipliers) : 1.0
+	);
+	let showReasoningIndicator = $derived(activeReasoningMultiplier > 1.0);
+
 	// Get the selected document info (not full document with content)
 	let selectedDocInfo = $derived(documents.find((doc) => doc.id === selectedDocId));
 
 	// Compute cost estimate when document and model are selected
-	async function updateCostEstimate() {
-		if (!selectedDocId) {
+	async function updateCostEstimate(
+		docId: string,
+		selectedModel: string,
+		selectedChunkSize: number,
+		selectedReasoningEffort: string,
+		selectedMultipliers: ReasoningMultipliers
+	) {
+		if (!docId) {
 			costEstimate = null;
 			return;
 		}
 
 		try {
-			const doc = await getDocument(selectedDocId);
+			const doc = await getDocument(docId);
 			if (!doc) {
 				costEstimate = null;
 				return;
@@ -116,18 +140,19 @@
 				content = await doc.content.text();
 			}
 
-			const chunks = chunkBySize(content, chunkSize);
+			const chunks = chunkBySize(content, selectedChunkSize);
 			const chunkContents = chunks.map(c => c.content);
-			costEstimate = estimateJobCost(chunkContents, model, 'cleanup');
+			costEstimate = estimateJobCost(chunkContents, selectedModel, 'cleanup', selectedReasoningEffort, selectedMultipliers);
 		} catch {
 			costEstimate = null;
 		}
 	}
 
 	// Re-estimate when relevant inputs change
+	// Pass all reactive values as parameters so Svelte 5 tracks them as dependencies
 	$effect(() => {
 		if (browser && selectedDocId && model) {
-			updateCostEstimate();
+			updateCostEstimate(selectedDocId, model, chunkSize, reasoningEffort, reasoningMultipliers);
 		}
 	});
 
@@ -283,6 +308,7 @@
 			<div>
 				<label class="block text-sm font-medium text-gray-700 mb-2">Model:</label>
 				<select
+					data-testid="model-select"
 					bind:value={model}
 					disabled={isCleaning}
 					class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
@@ -307,6 +333,7 @@
 			<div>
 				<label class="block text-sm font-medium text-gray-700 mb-2">Reasoning Effort:</label>
 				<select
+					data-testid="reasoning-effort-select"
 					bind:value={reasoningEffort}
 					disabled={isCleaning}
 					class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50"
@@ -333,6 +360,9 @@
 					<div>
 						<span class="text-blue-600">Est. cost:</span>
 						<span class="font-medium text-blue-800 ml-1">${costEstimate.estimatedCostUsd.toFixed(2)}</span>
+						{#if showReasoningIndicator}
+							<span data-testid="reasoning-multiplier-indicator" class="text-xs text-blue-600 ml-1">(×{activeReasoningMultiplier} reasoning)</span>
+						{/if}
 					</div>
 				</div>
 			</div>

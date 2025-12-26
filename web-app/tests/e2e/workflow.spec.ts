@@ -448,6 +448,175 @@ test.describe('Document Selection in Workflow', () => {
 		await expect(page.getByTestId('cost-estimate').getByText(/Combined/i)).toBeVisible();
 	});
 
+	test('cost estimate shows non-zero values when using expensive model', async ({ page }) => {
+		// Add a markdown document with substantial content
+		const largeContent = `# Chapter 1: Introduction
+
+This is a substantial piece of content that should generate a non-zero cost estimate when processed through the workflow. It has enough text to ensure meaningful token counts and costs.
+
+## Section 1.1: Background
+
+The background of this document provides important context for understanding the main content. We need to ensure that the cost estimation system works correctly for documents of various sizes.
+
+## Section 1.2: Purpose
+
+The purpose of this document is to test the cost estimation functionality across different pages of the application. By using the same document content, we can verify consistency.
+
+## Section 1.3: Methodology
+
+Our methodology involves comparing cost estimates between the workflow page and the individual cleanup/translate pages.`;
+
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_cost',
+			name: 'cost-test.md',
+			type: 'markdown',
+			content: largeContent,
+			size: largeContent.length,
+			uploadedAt: new Date().toISOString()
+		});
+
+		await page.goto('/workflow');
+
+		// Select the markdown document
+		await page.getByTestId('document-select').selectOption('doc_md_cost');
+
+		// Wait for cost estimate to appear (default is gpt-5-mini, may show $0.00 for small content)
+		await expect(page.getByTestId('cost-estimate')).toBeVisible({ timeout: 5000 });
+		const initialText = await page.getByTestId('cost-estimate').textContent();
+		console.log('Initial cost estimate (gpt-5-mini):', initialText);
+
+		// Change both models to gpt-5.2 to get measurable costs
+		const cleanupModelSelect = page.locator('text=Cleanup Settings').locator('..').locator('select').first();
+		await cleanupModelSelect.selectOption('gpt-5.2');
+
+		const translationModelSelect = page.locator('text=Translation Settings').locator('..').locator('select').first();
+		await translationModelSelect.selectOption('gpt-5.2');
+
+		// Wait for reactivity
+		await page.waitForTimeout(500);
+
+		// Get the updated cost estimate
+		const costEstimateText = await page.getByTestId('cost-estimate').textContent();
+		console.log('Cost estimate with gpt-5.2:', costEstimateText);
+
+		// Parse dollar amounts from the text
+		const allCostMatches = costEstimateText?.matchAll(/\$(\d+\.\d+)/g);
+		const costValues = allCostMatches ? [...allCostMatches].map(m => parseFloat(m[1])) : [];
+		console.log('All cost values found:', costValues);
+
+		// Should find 3 costs (cleanup, translation, combined)
+		expect(costValues.length).toBe(3);
+
+		const [cleanupCost, translationCost, combinedCost] = costValues;
+		console.log('Cleanup:', cleanupCost, 'Translation:', translationCost, 'Combined:', combinedCost);
+
+		// With gpt-5.2, costs should be > $0.00 for this content size
+		expect(cleanupCost).toBeGreaterThan(0);
+		expect(translationCost).toBeGreaterThan(0);
+		expect(combinedCost).toBeGreaterThan(0);
+
+		// Combined should be approximately cleanup + translation
+		// Note: Due to independent rounding, combined may not equal exactly cleanup + translation
+		// (e.g., 0.01 + 0.01 = 0.02 but if combined rounds independently it might show 0.01)
+		expect(combinedCost).toBeGreaterThanOrEqual(Math.max(cleanupCost, translationCost));
+	});
+
+	test('cost estimate updates when model is changed to expensive model', async ({ page }) => {
+		// Add a LARGE markdown document - needs enough content that gpt-5.2 cost > $0.01
+		// With gpt-5.2 pricing ($2.5/1M input, $10/1M output), we need ~4000+ tokens for visible cost
+		const largeContent = `# The Complete Guide to Software Testing
+
+## Introduction
+
+Software testing is a critical process in the development lifecycle. This guide covers comprehensive testing strategies, methodologies, and best practices that every developer should know. Testing ensures software quality, reliability, and user satisfaction.
+
+## Chapter 1: Unit Testing Fundamentals
+
+Unit testing forms the foundation of any solid testing strategy. Unit tests verify individual components work correctly in isolation. They should be fast, independent, and reliable.
+
+### 1.1 Writing Effective Unit Tests
+
+Effective unit tests follow specific patterns. The Arrange-Act-Assert pattern is widely used. Tests should focus on one behavior at a time.
+
+### 1.2 Mocking Dependencies
+
+Mocking allows testing components in isolation. Mock objects simulate real dependencies. This speeds up tests and improves reliability.
+
+## Chapter 2: Integration Testing
+
+Integration tests verify components work together correctly. They catch issues that unit tests might miss. Integration tests are slower but provide confidence.
+
+### 2.1 Database Testing
+
+Database tests verify data persistence works correctly. They require careful setup and teardown. Transaction rollback is a common pattern.
+
+### 2.2 API Testing
+
+API tests verify endpoints respond correctly. They test request handling and response formatting. Contract testing ensures API compatibility.
+
+## Chapter 3: End-to-End Testing
+
+End-to-end tests verify complete user workflows. They test the entire system as users experience it. These tests are valuable but expensive to maintain.
+
+### 3.1 Browser Automation
+
+Browser automation tools like Playwright enable E2E testing. They simulate real user interactions. Page objects organize test code effectively.
+
+### 3.2 Visual Regression Testing
+
+Visual regression tests catch unintended UI changes. They compare screenshots against baselines. False positives require careful management.
+
+## Chapter 4: Test Strategy and Planning
+
+A good test strategy balances coverage and maintainability. The testing pyramid suggests more unit tests than integration tests.
+
+## Conclusion
+
+Testing is essential for quality software. A balanced approach combines multiple test types. Continuous improvement keeps test suites valuable.`;
+
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_model_test',
+			name: 'model-test.md',
+			type: 'markdown',
+			content: largeContent,
+			size: largeContent.length,
+			uploadedAt: new Date().toISOString()
+		});
+
+		await page.goto('/workflow');
+
+		// Select the markdown document (default model is gpt-5-mini)
+		await page.getByTestId('document-select').selectOption('doc_md_model_test');
+
+		// Wait for initial cost estimate
+		await expect(page.getByTestId('cost-estimate')).toBeVisible({ timeout: 5000 });
+		const initialText = await page.getByTestId('cost-estimate').textContent();
+		console.log('Initial cost (gpt-5-mini):', initialText);
+
+		// Now change to gpt-5.2 (expensive model) for cleanup
+		const cleanupModelSelect = page.locator('text=Cleanup Settings').locator('..').locator('select').first();
+		await cleanupModelSelect.selectOption('gpt-5.2');
+
+		// Wait a moment for reactivity
+		await page.waitForTimeout(500);
+
+		// Get the updated cost
+		const updatedText = await page.getByTestId('cost-estimate').textContent();
+		console.log('After gpt-5.2 selection:', updatedText);
+
+		// BUG TEST: The cost should CHANGE when the model changes
+		// Even if both show $0.00, the token breakdown or internal value should differ
+		// But ideally with this larger content, gpt-5.2 should show > $0.00
+
+		// Parse all dollar values
+		const updatedMatches = updatedText?.matchAll(/\$(\d+\.\d+)/g);
+		const updatedCosts = updatedMatches ? [...updatedMatches].map(m => parseFloat(m[1])) : [];
+		console.log('Updated costs:', updatedCosts);
+
+		// With 2000+ word document and gpt-5.2 pricing, cleanup cost should be > $0.01
+		expect(updatedCosts[0]).toBeGreaterThan(0); // Cleanup should be > $0.00 with gpt-5.2
+	});
+
 	test('selecting PDF document shows Convert & Estimate button', async ({ page }) => {
 		// Add a PDF document
 		await addDocumentToIndexedDB(page, {

@@ -5,6 +5,7 @@
 
 import { encode, encodeChat } from 'gpt-tokenizer';
 import { chunkBySize } from './chunker';
+import { is5SeriesModel } from '$lib/models';
 
 // Chat message overhead tokens (role tags, separators, etc.)
 // This is an approximation based on OpenAI's token counting documentation
@@ -73,6 +74,48 @@ const OUTPUT_MULTIPLIER = {
 };
 
 /**
+ * Reasoning effort multipliers for GPT-5 models.
+ * These account for the additional reasoning tokens billed as output tokens.
+ * Values are empirical estimates - users can adjust in settings.
+ */
+export interface ReasoningMultipliers {
+	none: number;
+	minimal: number;
+	low: number;
+	medium: number;
+	high: number;
+}
+
+/**
+ * Default reasoning effort multipliers.
+ * - none/minimal: No additional reasoning tokens (1.0x)
+ * - low: Small reasoning overhead (1.3x)
+ * - medium: Moderate reasoning overhead (2.0x)
+ * - high: Heavy reasoning overhead (3.5x)
+ */
+export const DEFAULT_REASONING_MULTIPLIERS: ReasoningMultipliers = {
+	none: 1.0,
+	minimal: 1.0,
+	low: 1.3,
+	medium: 2.0,
+	high: 3.5
+};
+
+/**
+ * Get the reasoning multiplier for a given reasoning effort level.
+ */
+export function getReasoningMultiplier(
+	reasoningEffort: string | undefined,
+	customMultipliers?: ReasoningMultipliers
+): number {
+	if (!reasoningEffort) {
+		return 1.0;
+	}
+	const multipliers = customMultipliers || DEFAULT_REASONING_MULTIPLIERS;
+	return multipliers[reasoningEffort as keyof ReasoningMultipliers] || 1.0;
+}
+
+/**
  * Count tokens in a text string.
  */
 export function estimateTokenCount(text: string): number {
@@ -122,7 +165,9 @@ export function calculateCost(usage: TokenUsage, model: string): number {
 export function estimateJobCost(
 	chunks: string[],
 	model: string,
-	mode: 'cleanup' | 'translate'
+	mode: 'cleanup' | 'translate',
+	reasoningEffort?: string,
+	customMultipliers?: ReasoningMultipliers
 ): CostEstimate {
 	if (!chunks || chunks.length === 0) {
 		return {
@@ -142,8 +187,14 @@ export function estimateJobCost(
 	const systemPromptOverhead = SYSTEM_PROMPT_TOKENS[mode] * chunks.length;
 	const estimatedInputTokens = totalChunkTokens + systemPromptOverhead;
 
-	// Estimate output tokens based on mode
-	const estimatedOutputTokens = Math.round(totalChunkTokens * OUTPUT_MULTIPLIER[mode]);
+	// Calculate base output tokens based on mode
+	let estimatedOutputTokens = Math.round(totalChunkTokens * OUTPUT_MULTIPLIER[mode]);
+
+	// Apply reasoning effort multiplier for GPT-5 models
+	if (is5SeriesModel(model) && reasoningEffort) {
+		const reasoningMultiplier = getReasoningMultiplier(reasoningEffort, customMultipliers);
+		estimatedOutputTokens = Math.round(estimatedOutputTokens * reasoningMultiplier);
+	}
 
 	// Calculate estimated cost
 	const estimatedCostUsd = calculateCost(
@@ -187,7 +238,10 @@ export function estimateWorkflowCost(
 	content: string,
 	cleanupModel: string,
 	translateModel: string,
-	chunkSize: number
+	chunkSize: number,
+	cleanupReasoningEffort?: string,
+	translateReasoningEffort?: string,
+	customMultipliers?: ReasoningMultipliers
 ): WorkflowCostEstimate {
 	if (!content) {
 		return {
@@ -202,11 +256,23 @@ export function estimateWorkflowCost(
 	const chunks = chunkBySize(content, chunkSize);
 	const chunkContents = chunks.map(c => c.content);
 
-	// Estimate cleanup cost
-	const cleanupEstimate = estimateJobCost(chunkContents, cleanupModel, 'cleanup');
+	// Estimate cleanup cost (with reasoning effort)
+	const cleanupEstimate = estimateJobCost(
+		chunkContents,
+		cleanupModel,
+		'cleanup',
+		cleanupReasoningEffort,
+		customMultipliers
+	);
 
-	// Estimate translation cost
-	const translateEstimate = estimateJobCost(chunkContents, translateModel, 'translate');
+	// Estimate translation cost (with reasoning effort)
+	const translateEstimate = estimateJobCost(
+		chunkContents,
+		translateModel,
+		'translate',
+		translateReasoningEffort,
+		customMultipliers
+	);
 
 	// Calculate totals
 	const totalTokens =

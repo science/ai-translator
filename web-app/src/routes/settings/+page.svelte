@@ -9,6 +9,10 @@
 		is5SeriesModel as checkIs5Series,
 		getReasoningEffortOptions
 	} from '$lib/models';
+	import {
+		DEFAULT_REASONING_MULTIPLIERS,
+		type ReasoningMultipliers
+	} from '$lib/services/costCalculator';
 
 	// API Key state
 	let apiKey = $state('');
@@ -21,6 +25,10 @@
 	let defaultChunkSize = $state('4000');
 	let defaultReasoningEffort = $state('medium');
 	let contextAwareEnabled = $state(true);
+
+	// Reasoning multiplier settings
+	let reasoningMultipliers = $state<ReasoningMultipliers>({ ...DEFAULT_REASONING_MULTIPLIERS });
+	let showAdvancedCostSettings = $state(false);
 
 	// Storage state
 	let storageUsed = $state<number | null>(null);
@@ -66,6 +74,17 @@
 		const storedContextAware = localStorage.getItem('context_aware_enabled');
 		if (storedContextAware !== null) contextAwareEnabled = storedContextAware === 'true';
 
+		// Load reasoning multipliers from localStorage
+		const storedMultipliers = localStorage.getItem('reasoning_multipliers');
+		if (storedMultipliers) {
+			try {
+				const parsed = JSON.parse(storedMultipliers);
+				reasoningMultipliers = { ...DEFAULT_REASONING_MULTIPLIERS, ...parsed };
+			} catch {
+				// Invalid JSON, use defaults
+			}
+		}
+
 		// Load storage estimate
 		loadStorageEstimate();
 	});
@@ -91,6 +110,19 @@
 			localStorage.setItem('default_chunk_size', defaultChunkSize);
 			localStorage.setItem('default_reasoning_effort', defaultReasoningEffort);
 			localStorage.setItem('context_aware_enabled', String(contextAwareEnabled));
+		}
+	}
+
+	function saveReasoningMultipliers() {
+		if (browser) {
+			localStorage.setItem('reasoning_multipliers', JSON.stringify(reasoningMultipliers));
+		}
+	}
+
+	function resetReasoningMultipliers() {
+		reasoningMultipliers = { ...DEFAULT_REASONING_MULTIPLIERS };
+		if (browser) {
+			localStorage.removeItem('reasoning_multipliers');
 		}
 	}
 
@@ -287,6 +319,132 @@
 					Save Defaults
 				</button>
 			</div>
+		</div>
+
+		<!-- Cost Estimation Settings Section -->
+		<div class="bg-white rounded-lg border border-gray-200 p-6">
+			<div class="flex items-center justify-between mb-4">
+				<h2 class="text-lg font-semibold text-gray-900">Cost Estimation Settings</h2>
+				<button
+					type="button"
+					onclick={() => showAdvancedCostSettings = !showAdvancedCostSettings}
+					class="text-sm text-blue-600 hover:text-blue-700"
+				>
+					{showAdvancedCostSettings ? 'Hide Advanced' : 'Show Advanced'}
+				</button>
+			</div>
+
+			<p class="text-sm text-gray-600 mb-4">
+				GPT-5 models use internal reasoning tokens that are billed as output tokens. These multipliers help estimate additional costs based on reasoning effort level.
+			</p>
+
+			{#if showAdvancedCostSettings}
+				<div class="space-y-4">
+					<div class="grid grid-cols-2 gap-4">
+						<div>
+							<label for="multiplier-none" class="block text-sm font-medium text-gray-700 mb-1">
+								None / Minimal (no reasoning)
+							</label>
+							<input
+								id="multiplier-none"
+								type="number"
+								step="0.1"
+								min="1.0"
+								max="10.0"
+								bind:value={reasoningMultipliers.none}
+								onchange={() => { reasoningMultipliers.minimal = reasoningMultipliers.none; }}
+								data-testid="multiplier-none"
+								class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+							/>
+							<p class="text-xs text-gray-500 mt-1">Default: 1.0x</p>
+						</div>
+
+						<div>
+							<label for="multiplier-low" class="block text-sm font-medium text-gray-700 mb-1">
+								Low reasoning
+							</label>
+							<input
+								id="multiplier-low"
+								type="number"
+								step="0.1"
+								min="1.0"
+								max="10.0"
+								bind:value={reasoningMultipliers.low}
+								data-testid="multiplier-low"
+								class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+							/>
+							<p class="text-xs text-gray-500 mt-1">Default: 1.3x</p>
+						</div>
+
+						<div>
+							<label for="multiplier-medium" class="block text-sm font-medium text-gray-700 mb-1">
+								Medium reasoning
+							</label>
+							<input
+								id="multiplier-medium"
+								type="number"
+								step="0.1"
+								min="1.0"
+								max="10.0"
+								bind:value={reasoningMultipliers.medium}
+								data-testid="multiplier-medium"
+								class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+							/>
+							<p class="text-xs text-gray-500 mt-1">Default: 2.0x</p>
+						</div>
+
+						<div>
+							<label for="multiplier-high" class="block text-sm font-medium text-gray-700 mb-1">
+								High reasoning
+							</label>
+							<input
+								id="multiplier-high"
+								type="number"
+								step="0.1"
+								min="1.0"
+								max="10.0"
+								bind:value={reasoningMultipliers.high}
+								data-testid="multiplier-high"
+								class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+							/>
+							<p class="text-xs text-gray-500 mt-1">Default: 3.5x</p>
+						</div>
+					</div>
+
+					<div class="flex items-start gap-2 p-3 bg-blue-50 text-blue-800 rounded-lg text-sm">
+						<svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+							<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+						</svg>
+						<p>
+							These multipliers are estimates. Actual reasoning token usage varies by task complexity.
+							Adjust based on your observed costs if needed.
+						</p>
+					</div>
+
+					<div class="flex gap-2">
+						<button
+							type="button"
+							data-testid="save-multipliers"
+							onclick={saveReasoningMultipliers}
+							class="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+						>
+							Save Multipliers
+						</button>
+						<button
+							type="button"
+							data-testid="reset-multipliers"
+							onclick={resetReasoningMultipliers}
+							class="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+						>
+							Reset to Defaults
+						</button>
+					</div>
+				</div>
+			{:else}
+				<p class="text-sm text-gray-500">
+					Current multipliers: None/Minimal: {reasoningMultipliers.none}x, Low: {reasoningMultipliers.low}x, Medium: {reasoningMultipliers.medium}x, High: {reasoningMultipliers.high}x
+				</p>
+			{/if}
 		</div>
 
 		<!-- Storage Management Section -->

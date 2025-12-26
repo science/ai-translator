@@ -44,7 +44,7 @@
 		is5SeriesModel as checkIs5Series,
 		getReasoningEffortOptions
 	} from '$lib/models';
-	import { calculateCost, estimateWorkflowCost, type TokenUsage, type WorkflowCostEstimate } from '$lib/services/costCalculator';
+	import { calculateCost, estimateWorkflowCost, getReasoningMultiplier, DEFAULT_REASONING_MULTIPLIERS, type TokenUsage, type WorkflowCostEstimate, type ReasoningMultipliers } from '$lib/services/costCalculator';
 
 	// File type detection
 	type UploadedFileType = 'pdf' | 'markdown';
@@ -101,6 +101,7 @@
 	// Cost estimation state
 	let costEstimate = $state<WorkflowCostEstimate | null>(null);
 	let isConverting = $state(false);
+	let reasoningMultipliers = $state<ReasoningMultipliers>({ ...DEFAULT_REASONING_MULTIPLIERS });
 
 	// Derived state - now requires target language and either file or selected document
 	let hasDocumentInput = $derived(selectedFile !== null || selectedDocId !== '');
@@ -138,6 +139,16 @@
 	// Get reasoning effort options based on model type (from centralized config)
 	let cleanupReasoningOptions = $derived(getReasoningEffortOptions(cleanupModel) || []);
 	let translationReasoningOptions = $derived(getReasoningEffortOptions(translationModel) || []);
+
+	// Compute active reasoning multipliers for display
+	let cleanupReasoningMultiplier = $derived(
+		isCleanup5Series ? getReasoningMultiplier(cleanupReasoningEffort, reasoningMultipliers) : 1.0
+	);
+	let translationReasoningMultiplier = $derived(
+		isTranslation5Series ? getReasoningMultiplier(translationReasoningEffort, reasoningMultipliers) : 1.0
+	);
+	let showCleanupReasoningIndicator = $derived(cleanupReasoningMultiplier > 1.0);
+	let showTranslationReasoningIndicator = $derived(translationReasoningMultiplier > 1.0);
 
 	async function loadDocuments() {
 		const docs = await getAllDocuments();
@@ -196,9 +207,29 @@
 			content,
 			cleanupModel,
 			translationModel,
-			Math.min(cleanupChunkSize, translationChunkSize)
+			Math.min(cleanupChunkSize, translationChunkSize),
+			cleanupReasoningEffort,
+			translationReasoningEffort,
+			reasoningMultipliers
 		);
 	}
+
+	// Re-estimate cost when models, chunk sizes, or reasoning efforts change
+	$effect(() => {
+		// Only recalculate if we have content loaded
+		if (browser && selectedDocContent) {
+			// Directly use reactive variables so they're tracked
+			costEstimate = estimateWorkflowCost(
+				selectedDocContent,
+				cleanupModel,
+				translationModel,
+				Math.min(cleanupChunkSize, translationChunkSize),
+				cleanupReasoningEffort,
+				translationReasoningEffort,
+				reasoningMultipliers
+			);
+		}
+	});
 
 	onMount(async () => {
 		if (browser) {
@@ -226,6 +257,17 @@
 			}
 			if (savedContextAware !== null) {
 				translationContextAware = savedContextAware === 'true';
+			}
+
+			// Load reasoning multipliers from localStorage
+			const storedMultipliers = localStorage.getItem('reasoning_multipliers');
+			if (storedMultipliers) {
+				try {
+					const parsed = JSON.parse(storedMultipliers);
+					reasoningMultipliers = { ...DEFAULT_REASONING_MULTIPLIERS, ...parsed };
+				} catch {
+					// Invalid JSON, use defaults
+				}
 			}
 
 			// Load language history
@@ -654,10 +696,16 @@
 						<div>
 							<span class="text-gray-600">Cleanup:</span>
 							<span class="font-medium text-gray-900">${costEstimate.cleanup.estimatedCostUsd.toFixed(2)}</span>
+							{#if showCleanupReasoningIndicator}
+								<span data-testid="cleanup-reasoning-indicator" class="text-xs text-blue-600 ml-1">(×{cleanupReasoningMultiplier} reasoning)</span>
+							{/if}
 						</div>
 						<div>
 							<span class="text-gray-600">Translation:</span>
 							<span class="font-medium text-gray-900">${costEstimate.translate.estimatedCostUsd.toFixed(2)}</span>
+							{#if showTranslationReasoningIndicator}
+								<span data-testid="translation-reasoning-indicator" class="text-xs text-blue-600 ml-1">(×{translationReasoningMultiplier} reasoning)</span>
+							{/if}
 						</div>
 						<div class="col-span-2 pt-2 border-t border-blue-200">
 							<span class="text-gray-700 font-medium">Combined:</span>
@@ -739,6 +787,7 @@
 					<div>
 						<label class="block text-sm font-medium text-gray-700 mb-1">Reasoning Effort</label>
 						<select
+							data-testid="cleanup-reasoning-select"
 							bind:value={cleanupReasoningEffort}
 							disabled={workflowState.isRunning}
 							class="block w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 text-sm"

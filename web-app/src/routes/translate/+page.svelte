@@ -34,7 +34,7 @@
 	import { createTranslator } from '$lib/services/translator';
 	import { translateDocument } from '$lib/services/translationEngine';
 	import { exportMarkdownAsDocx } from '$lib/services/docxExporter';
-	import { estimateJobCost, calculateCost, type CostEstimate, type TokenUsage } from '$lib/services/costCalculator';
+	import { estimateJobCost, calculateCost, getReasoningMultiplier, DEFAULT_REASONING_MULTIPLIERS, type CostEstimate, type TokenUsage, type ReasoningMultipliers } from '$lib/services/costCalculator';
 
 	// Display-friendly version for the list
 	interface DocumentListItem {
@@ -61,6 +61,7 @@
 	// Cost tracking state
 	let costEstimate = $state<CostEstimate | null>(null);
 	let finalCost = $state<{ usage: TokenUsage; cost: number } | null>(null);
+	let reasoningMultipliers = $state<ReasoningMultipliers>({ ...DEFAULT_REASONING_MULTIPLIERS });
 
 	// Target language state
 	let targetLanguage = $state('');
@@ -88,6 +89,17 @@
 			const storedContextAware = localStorage.getItem('context_aware_enabled');
 			if (storedContextAware !== null) {
 				contextAware = storedContextAware === 'true';
+			}
+
+			// Load reasoning multipliers from localStorage
+			const storedMultipliers = localStorage.getItem('reasoning_multipliers');
+			if (storedMultipliers) {
+				try {
+					const parsed = JSON.parse(storedMultipliers);
+					reasoningMultipliers = { ...DEFAULT_REASONING_MULTIPLIERS, ...parsed };
+				} catch {
+					// Invalid JSON, use defaults
+				}
 			}
 
 			// Load language history
@@ -118,6 +130,12 @@
 	// Get the selected document info (not full document with content)
 	let selectedDocInfo = $derived(documents.find((doc) => doc.id === selectedDocId));
 
+	// Compute active reasoning multiplier for display
+	let activeReasoningMultiplier = $derived(
+		is5SeriesModel ? getReasoningMultiplier(reasoningEffort, reasoningMultipliers) : 1.0
+	);
+	let showReasoningIndicator = $derived(activeReasoningMultiplier > 1.0);
+
 	// Validation: language is required
 	let languageError = $derived(languageTouched && !targetLanguage.trim() ? 'Target language is required' : '');
 
@@ -125,14 +143,20 @@
 	let canTranslate = $derived(!!selectedDocId && !!targetLanguage.trim());
 
 	// Compute cost estimate when document and model are selected
-	async function updateCostEstimate() {
-		if (!selectedDocId) {
+	async function updateCostEstimate(
+		docId: string,
+		selectedModel: string,
+		selectedChunkSize: number,
+		selectedReasoningEffort: string,
+		selectedMultipliers: ReasoningMultipliers
+	) {
+		if (!docId) {
 			costEstimate = null;
 			return;
 		}
 
 		try {
-			const doc = await getDocument(selectedDocId);
+			const doc = await getDocument(docId);
 			if (!doc) {
 				costEstimate = null;
 				return;
@@ -145,18 +169,19 @@
 				content = await doc.content.text();
 			}
 
-			const chunks = chunkBySize(content, chunkSize);
+			const chunks = chunkBySize(content, selectedChunkSize);
 			const chunkContents = chunks.map(c => c.content);
-			costEstimate = estimateJobCost(chunkContents, model, 'translate');
+			costEstimate = estimateJobCost(chunkContents, selectedModel, 'translate', selectedReasoningEffort, selectedMultipliers);
 		} catch {
 			costEstimate = null;
 		}
 	}
 
 	// Re-estimate when relevant inputs change
+	// Pass all reactive values as parameters so Svelte 5 tracks them as dependencies
 	$effect(() => {
 		if (browser && selectedDocId && model) {
-			updateCostEstimate();
+			updateCostEstimate(selectedDocId, model, chunkSize, reasoningEffort, reasoningMultipliers);
 		}
 	});
 
@@ -473,6 +498,9 @@
 					<div>
 						<span class="text-blue-600">Est. cost:</span>
 						<span class="font-medium text-blue-800 ml-1">${costEstimate.estimatedCostUsd.toFixed(2)}</span>
+						{#if showReasoningIndicator}
+							<span data-testid="reasoning-multiplier-indicator" class="text-xs text-blue-600 ml-1">(×{activeReasoningMultiplier} reasoning)</span>
+						{/if}
 					</div>
 				</div>
 			</div>

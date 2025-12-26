@@ -300,3 +300,138 @@ test.describe('Settings Page - Storage Management', () => {
 		await expect(apiKeyInput).toHaveValue('sk-test-key-preserve');
 	});
 });
+
+test.describe('Settings Page - Cost Estimation Settings', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto('/settings');
+		await page.evaluate(() => localStorage.clear());
+		await page.reload();
+	});
+
+	test('shows cost estimation settings section', async ({ page }) => {
+		await page.goto('/settings');
+
+		await expect(page.getByText('Cost Estimation Settings')).toBeVisible();
+		await expect(page.getByText(/GPT-5 models use internal reasoning tokens/)).toBeVisible();
+	});
+
+	test('shows current multiplier values in collapsed state', async ({ page }) => {
+		await page.goto('/settings');
+
+		// Should show summary with default values
+		await expect(page.getByText(/None\/Minimal: 1x/)).toBeVisible();
+		await expect(page.getByText(/Medium: 2x/)).toBeVisible();
+		await expect(page.getByText(/High: 3.5x/)).toBeVisible();
+	});
+
+	test('expands advanced settings when Show Advanced is clicked', async ({ page }) => {
+		await page.goto('/settings');
+
+		// Initially, input fields should not be visible
+		await expect(page.locator('[data-testid="multiplier-none"]')).not.toBeVisible();
+
+		// Click Show Advanced
+		await page.getByText('Show Advanced').click();
+
+		// Now the input fields should be visible
+		await expect(page.locator('[data-testid="multiplier-none"]')).toBeVisible();
+		await expect(page.locator('[data-testid="multiplier-low"]')).toBeVisible();
+		await expect(page.locator('[data-testid="multiplier-medium"]')).toBeVisible();
+		await expect(page.locator('[data-testid="multiplier-high"]')).toBeVisible();
+	});
+
+	test('has correct default multiplier values', async ({ page }) => {
+		await page.goto('/settings');
+
+		// Expand advanced settings
+		await page.getByText('Show Advanced').click();
+
+		// Check default values
+		await expect(page.locator('[data-testid="multiplier-none"]')).toHaveValue('1');
+		await expect(page.locator('[data-testid="multiplier-low"]')).toHaveValue('1.3');
+		await expect(page.locator('[data-testid="multiplier-medium"]')).toHaveValue('2');
+		await expect(page.locator('[data-testid="multiplier-high"]')).toHaveValue('3.5');
+	});
+
+	test('saves custom multipliers to localStorage', async ({ page }) => {
+		await page.goto('/settings');
+
+		// Expand advanced settings
+		await page.getByText('Show Advanced').click();
+
+		// Change the medium multiplier
+		await page.locator('[data-testid="multiplier-medium"]').fill('2.5');
+
+		// Save
+		await page.locator('[data-testid="save-multipliers"]').click();
+
+		// Verify it was saved to localStorage
+		const stored = await page.evaluate(() => localStorage.getItem('reasoning_multipliers'));
+		expect(stored).toBeTruthy();
+		const parsed = JSON.parse(stored!);
+		expect(parsed.medium).toBe(2.5);
+	});
+
+	test('loads saved multipliers on page reload', async ({ page }) => {
+		await page.goto('/settings');
+
+		// Set custom multipliers in localStorage
+		await page.evaluate(() => {
+			localStorage.setItem('reasoning_multipliers', JSON.stringify({
+				none: 1.0,
+				minimal: 1.0,
+				low: 1.5,
+				medium: 3.0,
+				high: 5.0
+			}));
+		});
+
+		// Reload
+		await page.reload();
+
+		// Expand advanced settings
+		await page.getByText('Show Advanced').click();
+
+		// Verify values are loaded
+		await expect(page.locator('[data-testid="multiplier-low"]')).toHaveValue('1.5');
+		await expect(page.locator('[data-testid="multiplier-medium"]')).toHaveValue('3');
+		await expect(page.locator('[data-testid="multiplier-high"]')).toHaveValue('5');
+	});
+
+	test('reset button restores default multipliers', async ({ page }) => {
+		await page.goto('/settings');
+
+		// Set custom multipliers in localStorage
+		await page.evaluate(() => {
+			localStorage.setItem('reasoning_multipliers', JSON.stringify({
+				none: 1.0,
+				minimal: 1.0,
+				low: 2.0,
+				medium: 4.0,
+				high: 6.0
+			}));
+		});
+
+		// Reload to load saved values
+		await page.reload();
+
+		// Expand advanced settings
+		await page.getByText('Show Advanced').click();
+
+		// Verify custom values are loaded
+		await expect(page.locator('[data-testid="multiplier-high"]')).toHaveValue('6');
+
+		// Click reset
+		await page.locator('[data-testid="reset-multipliers"]').click();
+
+		// Verify values are reset to defaults
+		await expect(page.locator('[data-testid="multiplier-none"]')).toHaveValue('1');
+		await expect(page.locator('[data-testid="multiplier-low"]')).toHaveValue('1.3');
+		await expect(page.locator('[data-testid="multiplier-medium"]')).toHaveValue('2');
+		await expect(page.locator('[data-testid="multiplier-high"]')).toHaveValue('3.5');
+
+		// Verify localStorage is cleared
+		const stored = await page.evaluate(() => localStorage.getItem('reasoning_multipliers'));
+		expect(stored).toBeNull();
+	});
+});

@@ -210,6 +210,70 @@ test.describe('Cost Estimation - Cleanup', () => {
 		await expect(costEstimate.getByText(/Est\. cost:/)).toBeVisible();
 	});
 
+	test('cost estimate updates when reasoning effort is changed', async ({ page }) => {
+		// Pre-populate IndexedDB with a larger markdown document to see cost differences
+		// Need enough content so cost difference is visible after rounding to 2 decimal places
+		const largeContent = '# Test Book\n\n' + 'This is test content for cost estimation with enough text to show cost differences when reasoning effort changes. '.repeat(5000);
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_large',
+			name: 'large-book.md',
+			type: 'markdown',
+			content: largeContent,
+			size: largeContent.length,
+			uploadedAt: new Date().toISOString(),
+			phase: 'uploaded'
+		});
+
+		await page.goto('/cleanup');
+
+		// Select the document
+		const select = page.locator('select').first();
+		await expect(select).toBeVisible();
+		await select.selectOption('doc_md_large');
+
+		// Select gpt-5.2 model for higher pricing to see cost differences
+		const modelSelect = page.getByTestId('model-select');
+		await modelSelect.selectOption('gpt-5.2');
+
+		// Wait for cost estimate to be visible
+		const costEstimate = page.getByTestId('cost-estimate');
+		await expect(costEstimate).toBeVisible();
+
+		// Set reasoning to "none" first (1x multiplier for gpt-5.2)
+		const reasoningSelect = page.getByTestId('reasoning-effort-select');
+		await reasoningSelect.selectOption('none');
+
+		// Wait for cost to update
+		await page.waitForTimeout(200);
+
+		// Get the initial cost value with no reasoning (1x multiplier)
+		const initialCostText = await costEstimate.getByText(/Est\. cost:/).locator('..').textContent();
+		const initialCostMatch = initialCostText?.match(/\$(\d+\.?\d*)/);
+		expect(initialCostMatch).toBeTruthy();
+		const initialCost = parseFloat(initialCostMatch![1]);
+
+		// Change reasoning effort to "high" (3.5x multiplier)
+		await reasoningSelect.selectOption('high');
+
+		// Wait for cost to update
+		await page.waitForTimeout(200);
+
+		// Get the new cost value - should be higher due to 3.5x vs 1x multiplier
+		const newCostText = await costEstimate.getByText(/Est\. cost:/).locator('..').textContent();
+		const newCostMatch = newCostText?.match(/\$(\d+\.?\d*)/);
+		expect(newCostMatch).toBeTruthy();
+		const newCost = parseFloat(newCostMatch![1]);
+
+		// The cost with high reasoning (3.5x) should be greater than none (1x)
+		// Expected ratio: 3.5/1 = 3.5x increase
+		expect(newCost).toBeGreaterThan(initialCost);
+
+		// More specifically, verify the ratio is approximately correct (with some tolerance)
+		const ratio = newCost / initialCost;
+		expect(ratio).toBeGreaterThanOrEqual(2.5); // Should be ~3.5x
+		expect(ratio).toBeLessThanOrEqual(4.5);
+	});
+
 	test('shows final cost summary after cleanup completes', async ({ page }) => {
 		// Pre-populate IndexedDB with a markdown document
 		await addDocumentToIndexedDB(page, {
@@ -248,6 +312,131 @@ test.describe('Cost Estimation - Cleanup', () => {
 		const finalCost = page.getByTestId('final-cost');
 		await expect(finalCost.getByText(/Total tokens:/)).toBeVisible();
 		await expect(finalCost.getByText(/Final cost:/)).toBeVisible();
+	});
+});
+
+test.describe('Cost Estimation - Reasoning Multiplier Indicator', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.goto('/');
+		await clearAllStorage(page);
+	});
+
+	test('shows reasoning multiplier indicator on cleanup page when GPT-5 model with high reasoning is selected', async ({ page }) => {
+		// Pre-populate IndexedDB with a markdown document
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_123',
+			name: 'test-book.md',
+			type: 'markdown',
+			content: '# Test Book\n\nThis is test content for cost estimation with reasoning multiplier indicator.',
+			size: 80,
+			uploadedAt: new Date().toISOString(),
+			phase: 'uploaded'
+		});
+
+		await page.goto('/cleanup');
+
+		// Select the document
+		const select = page.locator('select').first();
+		await expect(select).toBeVisible();
+		await select.selectOption('doc_md_123');
+
+		// Verify cost estimate is visible
+		await expect(page.getByTestId('cost-estimate')).toBeVisible();
+
+		// Change reasoning effort to high
+		const reasoningSelect = page.getByTestId('reasoning-effort-select');
+		await reasoningSelect.selectOption('high');
+
+		// Should show the reasoning multiplier indicator (3.5x for high)
+		await expect(page.getByTestId('reasoning-multiplier-indicator')).toBeVisible();
+		await expect(page.getByTestId('reasoning-multiplier-indicator')).toContainText('3.5');
+	});
+
+	test('hides reasoning multiplier indicator when GPT-4 model is selected', async ({ page }) => {
+		// Pre-populate IndexedDB with a markdown document
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_123',
+			name: 'test-book.md',
+			type: 'markdown',
+			content: '# Test Book\n\nThis is test content.',
+			size: 30,
+			uploadedAt: new Date().toISOString(),
+			phase: 'uploaded'
+		});
+
+		await page.goto('/cleanup');
+
+		// Select the document
+		const select = page.locator('select').first();
+		await expect(select).toBeVisible();
+		await select.selectOption('doc_md_123');
+
+		// Change to GPT-4 model (no reasoning support)
+		const modelSelect = page.getByTestId('model-select');
+		await modelSelect.selectOption('gpt-4.1');
+
+		// Reasoning multiplier indicator should NOT be visible
+		await expect(page.getByTestId('reasoning-multiplier-indicator')).not.toBeVisible();
+	});
+
+	test('hides reasoning multiplier indicator when reasoning effort is minimal', async ({ page }) => {
+		// Pre-populate IndexedDB with a markdown document
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_123',
+			name: 'test-book.md',
+			type: 'markdown',
+			content: '# Test Book\n\nThis is test content.',
+			size: 30,
+			uploadedAt: new Date().toISOString(),
+			phase: 'uploaded'
+		});
+
+		await page.goto('/cleanup');
+
+		// Select the document
+		const select = page.locator('select').first();
+		await expect(select).toBeVisible();
+		await select.selectOption('doc_md_123');
+
+		// Default model is gpt-5-mini, set reasoning to minimal
+		const reasoningSelect = page.getByTestId('reasoning-effort-select');
+		await reasoningSelect.selectOption('minimal');
+
+		// Reasoning multiplier indicator should NOT be visible (1.0x means no indicator)
+		await expect(page.getByTestId('reasoning-multiplier-indicator')).not.toBeVisible();
+	});
+
+	test('shows reasoning multiplier in workflow page cost estimate for each phase', async ({ page }) => {
+		// Pre-populate IndexedDB with a markdown document
+		await addDocumentToIndexedDB(page, {
+			id: 'doc_md_123',
+			name: 'test-book.md',
+			type: 'markdown',
+			content: '# Test Book\n\nThis is test content for workflow cost estimation.',
+			size: 60,
+			uploadedAt: new Date().toISOString(),
+			phase: 'uploaded'
+		});
+
+		await page.goto('/workflow');
+
+		// Select the document
+		const docSelect = page.getByTestId('document-select');
+		await docSelect.selectOption('doc_md_123');
+
+		// Set target language
+		await page.getByTestId('target-language-input').fill('Japanese');
+
+		// Wait for cost estimate
+		await expect(page.getByTestId('cost-estimate')).toBeVisible();
+
+		// Change cleanup reasoning to high
+		const cleanupReasoningSelect = page.getByTestId('cleanup-reasoning-select');
+		await cleanupReasoningSelect.selectOption('high');
+
+		// Should show reasoning multiplier indicator for cleanup
+		await expect(page.getByTestId('cleanup-reasoning-indicator')).toBeVisible();
+		await expect(page.getByTestId('cleanup-reasoning-indicator')).toContainText('3.5');
 	});
 });
 
