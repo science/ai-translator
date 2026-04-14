@@ -130,7 +130,7 @@ test.describe('Settings Page - Default Settings', () => {
 		await expect(page.locator('#default-reasoning-effort')).toHaveValue('high');
 	});
 
-	test('model dropdown contains correct options: gpt-5.2, gpt-5-mini, gpt-4.1, gpt-4.1-mini', async ({
+	test('model dropdown contains correct options: gpt-5.4, gpt-5.4-mini, gpt-4.1, gpt-4.1-mini', async ({
 		page
 	}) => {
 		await page.goto('/settings');
@@ -142,13 +142,13 @@ test.describe('Settings Page - Default Settings', () => {
 		const options = await modelSelect.locator('option').allTextContents();
 
 		// Should contain exactly these models
-		expect(options).toEqual(['gpt-5.2', 'gpt-5-mini', 'gpt-4.1', 'gpt-4.1-mini']);
+		expect(options).toEqual(['gpt-5.4', 'gpt-5.4-mini', 'gpt-4.1', 'gpt-4.1-mini']);
 	});
 
 	test('reasoning effort is only visible when 5-series model is selected', async ({ page }) => {
 		await page.goto('/settings');
 
-		// Default model is gpt-5-mini, so reasoning effort should be visible
+		// Default model is gpt-5.4-mini, so reasoning effort should be visible
 		const reasoningLabel = page.getByText('Default Reasoning Effort');
 		await expect(reasoningLabel).toBeVisible();
 
@@ -160,18 +160,18 @@ test.describe('Settings Page - Default Settings', () => {
 		await expect(reasoningLabel).not.toBeVisible();
 
 		// Select a 5-series model again
-		await modelSelect.selectOption('gpt-5.2');
+		await modelSelect.selectOption('gpt-5.4');
 
 		// Reasoning effort should be visible again
 		await expect(reasoningLabel).toBeVisible();
 	});
 
-	test('gpt-5.2 shows "None" option for reasoning effort', async ({ page }) => {
+	test('gpt-5.4 shows "None" option for reasoning effort', async ({ page }) => {
 		await page.goto('/settings');
 
-		// Select gpt-5.2
+		// Select gpt-5.4
 		const modelSelect = page.locator('#default-model');
-		await modelSelect.selectOption('gpt-5.2');
+		await modelSelect.selectOption('gpt-5.4');
 
 		// Get reasoning effort options
 		const reasoningSelect = page.locator('#default-reasoning-effort');
@@ -181,22 +181,22 @@ test.describe('Settings Page - Default Settings', () => {
 		expect(options).toEqual(['None', 'Low', 'Medium', 'High']);
 	});
 
-	test('gpt-5-mini shows "Minimal" option for reasoning effort', async ({ page }) => {
+	test('gpt-5.4-mini shows "None" option for reasoning effort', async ({ page }) => {
 		await page.goto('/settings');
 
-		// gpt-5-mini is the default
+		// gpt-5.4-mini is the default
 		const modelSelect = page.locator('#default-model');
-		await expect(modelSelect).toHaveValue('gpt-5-mini');
+		await expect(modelSelect).toHaveValue('gpt-5.4-mini');
 
 		// Get reasoning effort options
 		const reasoningSelect = page.locator('#default-reasoning-effort');
 		const options = await reasoningSelect.locator('option').allTextContents();
 
-		// GPT-5-mini should have: Minimal, Low, Medium, High
-		expect(options).toEqual(['Minimal', 'Low', 'Medium', 'High']);
+		// GPT-5-mini should have: None, Low, Medium, High
+		expect(options).toEqual(['None', 'Low', 'Medium', 'High']);
 	});
 
-	test('reasoning effort options change when switching between gpt-5.2 and gpt-5-mini', async ({
+	test('reasoning effort options change when switching between gpt-5.4 and gpt-5.4-mini', async ({
 		page
 	}) => {
 		await page.goto('/settings');
@@ -204,22 +204,22 @@ test.describe('Settings Page - Default Settings', () => {
 		const modelSelect = page.locator('#default-model');
 		const reasoningSelect = page.locator('#default-reasoning-effort');
 
-		// Wait for reasoning effort select to be visible (gpt-5-mini is default)
+		// Wait for reasoning effort select to be visible (gpt-5.4-mini is default)
 		await expect(reasoningSelect).toBeVisible();
 
-		// Start with gpt-5-mini (default)
+		// Start with gpt-5.4-mini (default) - both models now have same options
 		let options = await reasoningSelect.locator('option').allTextContents();
-		expect(options).toEqual(['Minimal', 'Low', 'Medium', 'High']);
+		expect(options).toEqual(['None', 'Low', 'Medium', 'High']);
 
-		// Switch to gpt-5.2
-		await modelSelect.selectOption('gpt-5.2');
+		// Switch to gpt-5.4
+		await modelSelect.selectOption('gpt-5.4');
 		options = await reasoningSelect.locator('option').allTextContents();
 		expect(options).toEqual(['None', 'Low', 'Medium', 'High']);
 
-		// Switch back to gpt-5-mini
-		await modelSelect.selectOption('gpt-5-mini');
+		// Switch back to gpt-5.4-mini
+		await modelSelect.selectOption('gpt-5.4-mini');
 		options = await reasoningSelect.locator('option').allTextContents();
-		expect(options).toEqual(['Minimal', 'Low', 'Medium', 'High']);
+		expect(options).toEqual(['None', 'Low', 'Medium', 'High']);
 	});
 });
 

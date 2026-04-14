@@ -71,7 +71,7 @@ test.describe('Cost Estimation - Translation', () => {
 		await expect(costEstimate).toBeVisible();
 
 		// Get the displayed model
-		const initialModelText = await costEstimate.getByText(/gpt-5-mini/).textContent();
+		const initialModelText = await costEstimate.getByText(/gpt-5.4-mini/).textContent();
 		expect(initialModelText).toBeTruthy();
 
 		// Change model
@@ -231,15 +231,15 @@ test.describe('Cost Estimation - Cleanup', () => {
 		await expect(select).toBeVisible();
 		await select.selectOption('doc_md_large');
 
-		// Select gpt-5.2 model for higher pricing to see cost differences
+		// Select gpt-5.4 model for higher pricing to see cost differences
 		const modelSelect = page.getByTestId('model-select');
-		await modelSelect.selectOption('gpt-5.2');
+		await modelSelect.selectOption('gpt-5.4');
 
 		// Wait for cost estimate to be visible
 		const costEstimate = page.getByTestId('cost-estimate');
 		await expect(costEstimate).toBeVisible();
 
-		// Set reasoning to "none" first (1x multiplier for gpt-5.2)
+		// Set reasoning to "none" first (1x multiplier for gpt-5.4)
 		const reasoningSelect = page.getByTestId('reasoning-effort-select');
 		await reasoningSelect.selectOption('none');
 
@@ -379,7 +379,7 @@ test.describe('Cost Estimation - Reasoning Multiplier Indicator', () => {
 		await expect(page.getByTestId('reasoning-multiplier-indicator')).not.toBeVisible();
 	});
 
-	test('hides reasoning multiplier indicator when reasoning effort is minimal', async ({ page }) => {
+	test('hides reasoning multiplier indicator when reasoning effort is none', async ({ page }) => {
 		// Pre-populate IndexedDB with a markdown document
 		await addDocumentToIndexedDB(page, {
 			id: 'doc_md_123',
@@ -398,9 +398,9 @@ test.describe('Cost Estimation - Reasoning Multiplier Indicator', () => {
 		await expect(select).toBeVisible();
 		await select.selectOption('doc_md_123');
 
-		// Default model is gpt-5-mini, set reasoning to minimal
+		// Default model is gpt-5.4-mini, set reasoning to none
 		const reasoningSelect = page.getByTestId('reasoning-effort-select');
-		await reasoningSelect.selectOption('minimal');
+		await reasoningSelect.selectOption('none');
 
 		// Reasoning multiplier indicator should NOT be visible (1.0x means no indicator)
 		await expect(page.getByTestId('reasoning-multiplier-indicator')).not.toBeVisible();

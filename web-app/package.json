@@ -39,6 +39,8 @@
 		"@opendocsg/pdf2md": "^0.2.2",
 		"gpt-tokenizer": "^3.4.0",
 		"idb": "^8.0.3",
+		"jspdf": "^4.2.1",
+		"jszip": "^3.10.1",
 		"marked": "^17.0.1"
 	}
 }

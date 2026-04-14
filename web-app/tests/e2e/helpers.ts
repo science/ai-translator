@@ -160,7 +160,7 @@ export async function mockOpenAICompletion(
 				id: 'chatcmpl-test',
 				object: 'chat.completion',
 				created: Date.now(),
-				model: capturedRequest?.model || 'gpt-5-mini',
+				model: capturedRequest?.model || 'gpt-5.4-mini',
 				choices: [
 					{
 						index: 0,

@@ -111,8 +111,8 @@ Configure defaults and manage your workspace:
 
 | Model | Speed | Quality | Best For |
 |-------|-------|---------|----------|
-| gpt-5.2 | Slower | Highest | Final translations |
-| gpt-5-mini | Medium | High | General use (default) |
+| gpt-5.4 | Slower | Highest | Final translations |
+| gpt-5.4-mini | Medium | High | General use (default) |
 | gpt-4.1 | Fast | Good | Quick drafts |
 | gpt-4.1-mini | Fastest | Good | Large documents |
 
@@ -273,7 +273,7 @@ node src/index.js <input-file> [options]
 **Options:**
 - `--output-dir <path>` - Output directory (default: `output/`)
 - `--chunk-size <n>` - Characters per chunk (default: `4000`)
-- `--model <name>` - OpenAI model (default: `gpt-5-mini`)
+- `--model <name>` - OpenAI model (default: `gpt-5.4-mini`)
 - `--reasoning-effort <level>` - GPT-5 reasoning: `low`, `medium`, `high`
 
 **Examples:**

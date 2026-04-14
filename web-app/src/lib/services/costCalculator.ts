@@ -45,13 +45,13 @@ export interface WorkflowCostEstimate {
  * Using gpt-tokenizer's built-in pricing as reference.
  */
 const MODEL_PRICING: Record<string, { input: number; output: number }> = {
-	'gpt-5.2': { input: 2.5, output: 10.0 },
-	'gpt-5-mini': { input: 0.15, output: 0.6 },
+	'gpt-5.4': { input: 2.5, output: 10.0 },
+	'gpt-5.4-mini': { input: 0.15, output: 0.6 },
 	'gpt-4.1': { input: 2.0, output: 8.0 },
 	'gpt-4.1-mini': { input: 0.1, output: 0.4 }
 };
 
-// Default pricing for unknown models (use gpt-5-mini pricing as safe default)
+// Default pricing for unknown models (use gpt-5.4-mini pricing as safe default)
 const DEFAULT_PRICING = { input: 0.15, output: 0.6 };
 
 /**

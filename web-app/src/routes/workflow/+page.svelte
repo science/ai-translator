@@ -36,6 +36,8 @@
 	} from '$lib/workflow';
 	import { runWorkflow, type WorkflowResult, type UsageByPhase } from '$lib/services/workflowEngine';
 	import { exportMarkdownAsDocx } from '$lib/services/docxExporter';
+	import { exportMarkdownAsEpub } from '$lib/services/epubExporter';
+	import { exportMarkdownAsPdf } from '$lib/services/pdfExporter';
 	import { getLanguageHistory, addLanguageToHistory } from '$lib/languageHistory';
 	import { getLanguageCode } from '$lib/languageCode';
 	import {
@@ -614,6 +616,15 @@
 		const docxFilename = filename.replace(/\.md$/i, '.docx');
 		await exportMarkdownAsDocx(content, docxFilename);
 	}
+
+	async function downloadAsEpub(content: string, filename: string) {
+		await exportMarkdownAsEpub(content, filename, { title: baseName, language: langCode });
+	}
+
+	async function downloadAsPdf(content: string, filename: string) {
+		const apiKey = localStorage.getItem('openai_api_key') || '';
+		await exportMarkdownAsPdf(content, filename, { translationDescription: targetLanguage, apiKey });
+	}
 </script>
 
 <div class="max-w-4xl">
@@ -1035,6 +1046,22 @@
 								title="Download as Word document"
 							>
 								DOCX
+							</button>
+							<button
+								data-testid="download-epub-{output.key}"
+								onclick={() => workflowResult && downloadAsEpub(workflowResult[output.key], output.filename)}
+								class="px-3 py-1 text-sm bg-emerald-600 text-white rounded hover:bg-emerald-700 transition-colors"
+								title="Download as EPUB"
+							>
+								EPUB
+							</button>
+							<button
+								data-testid="download-pdf-{output.key}"
+								onclick={() => workflowResult && downloadAsPdf(workflowResult[output.key], output.filename)}
+								class="px-3 py-1 text-sm bg-red-600 text-white rounded hover:bg-red-700 transition-colors"
+								title="Download as PDF"
+							>
+								PDF
 							</button>
 						</div>
 					</div>

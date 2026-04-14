@@ -49,13 +49,13 @@ describe('Workflow Engine', () => {
 	const mockTranslatedContent = '# テストドキュメント\n\n内容です。';
 
 	const defaultCleanupSettings: CleanupSettings = {
-		model: 'gpt-5-mini',
+		model: 'gpt-5.4-mini',
 		chunkSize: 4000,
 		reasoningEffort: 'medium'
 	};
 
 	const defaultTranslationSettings: TranslationSettings = {
-		model: 'gpt-5-mini',
+		model: 'gpt-5.4-mini',
 		chunkSize: 4000,
 		reasoningEffort: 'medium',
 		contextAware: true,
@@ -208,7 +208,7 @@ describe('Workflow Engine', () => {
 
 		it('passes translation settings to translator', async () => {
 			const customTranslationSettings: TranslationSettings = {
-				model: 'gpt-5.2',
+				model: 'gpt-5.4',
 				chunkSize: 3000,
 				reasoningEffort: 'low',
 				contextAware: false,
@@ -228,7 +228,7 @@ describe('Workflow Engine', () => {
 			expect(createTranslator).toHaveBeenCalledWith(
 				expect.objectContaining({
 					apiKey: 'test-key',
-					model: 'gpt-5.2',
+					model: 'gpt-5.4',
 					contextAware: false,
 					reasoningEffort: 'low'
 				})

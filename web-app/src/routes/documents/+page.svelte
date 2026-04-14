@@ -11,6 +11,8 @@
 		deleteDocument as deleteDocFromDB
 	} from '$lib/storage';
 	import { exportMarkdownAsDocx } from '$lib/services/docxExporter';
+	import { exportMarkdownAsEpub } from '$lib/services/epubExporter';
+	import { exportMarkdownAsPdf } from '$lib/services/pdfExporter';
 
 	// Display-friendly version of StoredDocument (content not needed for list)
 	interface DocumentListItem {
@@ -207,10 +209,25 @@
 		if (!doc || doc.type !== 'markdown') return;
 
 		const content = doc.content as string;
-		// Replace .md extension with .docx
 		const docxFilename = docName.replace(/\.md$/i, '.docx');
-
 		await exportMarkdownAsDocx(content, docxFilename);
+	}
+
+	async function exportAsEpub(id: string, docName: string) {
+		const doc = await getDocument(id);
+		if (!doc || doc.type !== 'markdown') return;
+
+		const content = doc.content as string;
+		await exportMarkdownAsEpub(content, docName, { title: docName.replace(/\.md$/i, '') });
+	}
+
+	async function exportAsPdf(id: string, docName: string) {
+		const doc = await getDocument(id);
+		if (!doc || doc.type !== 'markdown') return;
+
+		const content = doc.content as string;
+		const apiKey = localStorage.getItem('openai_api_key') || '';
+		await exportMarkdownAsPdf(content, docName, { translationDescription: docName, apiKey });
 	}
 
 	async function previewDocument(id: string, docType: 'pdf' | 'markdown' | 'text') {
@@ -416,6 +433,36 @@
 											d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
 										/>
 										<text x="8" y="15" font-size="6" fill="currentColor" stroke="none">W</text>
+									</svg>
+								</button>
+								<button
+									data-testid="export-epub"
+									onclick={() => exportAsEpub(doc.id, doc.name)}
+									class="p-2 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+									title="Export as EPUB"
+								>
+									<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"
+										/>
+									</svg>
+								</button>
+								<button
+									data-testid="export-pdf"
+									onclick={() => exportAsPdf(doc.id, doc.name)}
+									class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+									title="Export as PDF"
+								>
+									<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+										<path
+											stroke-linecap="round"
+											stroke-linejoin="round"
+											stroke-width="2"
+											d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
+										/>
 									</svg>
 								</button>
 							{/if}

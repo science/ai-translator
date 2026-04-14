@@ -4,6 +4,9 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
 	plugins: [sveltekit(), tailwindcss()],
+	server: {
+		allowedHosts: true
+	},
 	optimizeDeps: {
 		// Pre-bundle these dependencies to avoid dynamic import issues in production
 		include: ['@opendocsg/pdf2md', 'unpdf', 'unpdf/pdfjs']

@@ -16,18 +16,18 @@
 
 export const MODELS = [
   {
-    id: 'gpt-5.2',
-    label: 'gpt-5.2',
+    id: 'gpt-5.4',
+    label: 'gpt-5.4',
     series: 5,
     defaultReasoningEffort: 'none',
     supportedReasoningEfforts: ['none', 'low', 'medium', 'high']
   },
   {
-    id: 'gpt-5-mini',
-    label: 'gpt-5-mini',
+    id: 'gpt-5.4-mini',
+    label: 'gpt-5.4-mini',
     series: 5,
     defaultReasoningEffort: 'medium',
-    supportedReasoningEfforts: ['minimal', 'low', 'medium', 'high']
+    supportedReasoningEfforts: ['none', 'low', 'medium', 'high']
   },
   {
     id: 'gpt-4.1',
@@ -48,7 +48,7 @@ export const MODELS = [
 /**
  * Default model used when none is specified.
  */
-export const DEFAULT_MODEL = 'gpt-5-mini';
+export const DEFAULT_MODEL = 'gpt-5.4-mini';
 
 /**
  * Check if a model is part of the GPT-5 series.
@@ -57,16 +57,6 @@ export const DEFAULT_MODEL = 'gpt-5-mini';
  */
 export function is5SeriesModel(modelId) {
   return modelId.startsWith('gpt-5');
-}
-
-/**
- * Check if a model is specifically GPT-5.2 family.
- * GPT-5.2 uses 'none' as lowest reasoning effort instead of 'minimal'.
- * @param {string} modelId - The model identifier
- * @returns {boolean}
- */
-export function isGpt52Model(modelId) {
-  return /gpt-5\.2/.test(modelId);
 }
 
 /**
@@ -98,8 +88,8 @@ export function getReasoningEffortOptions(modelId) {
 
 /**
  * Get valid reasoning effort for a model, converting between formats if needed.
- * GPT-5.2: supports none, low, medium, high (default: none)
- * GPT-5/5-mini/5-nano: supports minimal, low, medium, high (default: medium)
+ * All GPT-5.4 models support: none, low, medium, high
+ * GPT-5.4 defaults to "none", GPT-5.4-mini defaults to "medium"
  * GPT-4.x: no reasoning effort support
  *
  * @param {string} modelId - The model identifier
@@ -111,17 +101,10 @@ export function getValidReasoningEffort(modelId, requestedEffort) {
     return null;
   }
 
-  const isGpt52 = isGpt52Model(modelId);
-
-  if (isGpt52) {
-    // GPT-5.2 defaults to "none" and doesn't support "minimal"
-    if (!requestedEffort) return 'none';
-    if (requestedEffort === 'minimal') return 'none';
-    return requestedEffort;
-  } else {
-    // GPT-5/5-mini/5-nano default to "medium" and don't support "none"
-    if (!requestedEffort) return 'medium';
-    if (requestedEffort === 'none') return 'minimal';
-    return requestedEffort;
+  if (!requestedEffort) {
+    const model = getModelById(modelId);
+    return model?.defaultReasoningEffort || 'none';
   }
+
+  return requestedEffort;
 }

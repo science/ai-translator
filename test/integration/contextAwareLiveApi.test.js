@@ -8,7 +8,7 @@ dotenv.config();
 
 /**
  * E2E tests that verify context-aware translation is actually working on the wire.
- * These tests use gpt-5-mini for cost efficiency.
+ * These tests use gpt-5.4-mini for cost efficiency.
  */
 describe('Context-Aware Translation Live API E2E', () => {
   // Skip if no API key
@@ -35,7 +35,7 @@ describe('Context-Aware Translation Live API E2E', () => {
 
       const translator = createTranslator({
         client: realClient,
-        model: 'gpt-5-mini',
+        model: 'gpt-5.4-mini',
         contextAware: true
       });
 
@@ -93,7 +93,7 @@ describe('Context-Aware Translation Live API E2E', () => {
 
       const translator = createTranslator({
         client: realClient,
-        model: 'gpt-5-mini',
+        model: 'gpt-5.4-mini',
         contextAware: false
       });
 
@@ -133,7 +133,7 @@ describe('Context-Aware Translation Live API E2E', () => {
       // Create translator WITHOUT specifying contextAware (should default to true)
       const translator = createTranslator({
         client: realClient,
-        model: 'gpt-5-mini'
+        model: 'gpt-5.4-mini'
       });
 
       const chunks = [

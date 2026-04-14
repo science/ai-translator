@@ -188,7 +188,7 @@ test.describe('Document Cleanup (Rectification)', () => {
 		// Verify the OpenAI API was called
 		const capturedRequest = getRequest();
 		expect(capturedRequest).not.toBeNull();
-		expect(capturedRequest?.model).toBe('gpt-5-mini');
+		expect(capturedRequest?.model).toBe('gpt-5.4-mini');
 		// The message should contain the document content
 		const userMessage = capturedRequest?.messages?.find((m) => m.role === 'user');
 		expect(userMessage?.content).toContain('ontents with errors');
@@ -314,7 +314,7 @@ test.describe('Document Cleanup (Rectification)', () => {
 		await expect(button).toHaveText('Start Cleanup');
 	});
 
-	test('model dropdown contains correct options: gpt-5.2, gpt-5-mini, gpt-4.1, gpt-4.1-mini', async ({
+	test('model dropdown contains correct options: gpt-5.4, gpt-5.4-mini, gpt-4.1, gpt-4.1-mini', async ({
 		page
 	}) => {
 		await page.goto('/cleanup');
@@ -327,20 +327,20 @@ test.describe('Document Cleanup (Rectification)', () => {
 		const options = await modelSelect.locator('option').allTextContents();
 
 		// Should contain exactly these models
-		expect(options).toEqual(['gpt-5.2', 'gpt-5-mini', 'gpt-4.1', 'gpt-4.1-mini']);
+		expect(options).toEqual(['gpt-5.4', 'gpt-5.4-mini', 'gpt-4.1', 'gpt-4.1-mini']);
 	});
 
 	test('cleanup page shows reasoning effort selector for 5-series models', async ({ page }) => {
 		await page.goto('/cleanup');
 		await page.waitForLoadState('networkidle');
 
-		// Default model is gpt-5-mini, so reasoning effort should be visible
+		// Default model is gpt-5.4-mini, so reasoning effort should be visible
 		const reasoningLabel = page.getByText('Reasoning Effort');
 		await expect(reasoningLabel).toBeVisible();
 
 		// Select a non-5 series model
 		const modelSelect = page.locator('select').nth(1);
-		await expect(modelSelect).toHaveValue('gpt-5-mini'); // Verify default
+		await expect(modelSelect).toHaveValue('gpt-5.4-mini'); // Verify default
 		await modelSelect.click();
 		await modelSelect.selectOption('gpt-4.1');
 
@@ -389,7 +389,7 @@ test.describe('Cleanup Page - Default Settings from Settings Tab', () => {
 	test('loads default reasoning effort from Settings tab localStorage', async ({ page }) => {
 		// Set up custom default reasoning effort in localStorage (with 5-series model)
 		await page.evaluate(() => {
-			localStorage.setItem('default_model', 'gpt-5-mini');
+			localStorage.setItem('default_model', 'gpt-5.4-mini');
 			localStorage.setItem('default_reasoning_effort', 'high');
 		});
 

@@ -119,7 +119,7 @@ test.describe('One Step Translation Page', () => {
 	test('reasoning effort dropdown appears only for GPT-5 models', async ({ page }) => {
 		await page.goto('/workflow');
 
-		// With gpt-5-mini (default), reasoning effort should be visible
+		// With gpt-5.4-mini (default), reasoning effort should be visible
 		const cleanupSection = page.locator('text=Cleanup Settings').locator('..');
 		await expect(cleanupSection.getByText('Reasoning Effort')).toBeVisible();
 
@@ -480,24 +480,24 @@ Our methodology involves comparing cost estimates between the workflow page and 
 		// Select the markdown document
 		await page.getByTestId('document-select').selectOption('doc_md_cost');
 
-		// Wait for cost estimate to appear (default is gpt-5-mini, may show $0.00 for small content)
+		// Wait for cost estimate to appear (default is gpt-5.4-mini, may show $0.00 for small content)
 		await expect(page.getByTestId('cost-estimate')).toBeVisible({ timeout: 5000 });
 		const initialText = await page.getByTestId('cost-estimate').textContent();
-		console.log('Initial cost estimate (gpt-5-mini):', initialText);
+		console.log('Initial cost estimate (gpt-5.4-mini):', initialText);
 
-		// Change both models to gpt-5.2 to get measurable costs
+		// Change both models to gpt-5.4 to get measurable costs
 		const cleanupModelSelect = page.locator('text=Cleanup Settings').locator('..').locator('select').first();
-		await cleanupModelSelect.selectOption('gpt-5.2');
+		await cleanupModelSelect.selectOption('gpt-5.4');
 
 		const translationModelSelect = page.locator('text=Translation Settings').locator('..').locator('select').first();
-		await translationModelSelect.selectOption('gpt-5.2');
+		await translationModelSelect.selectOption('gpt-5.4');
 
 		// Wait for reactivity
 		await page.waitForTimeout(500);
 
 		// Get the updated cost estimate
 		const costEstimateText = await page.getByTestId('cost-estimate').textContent();
-		console.log('Cost estimate with gpt-5.2:', costEstimateText);
+		console.log('Cost estimate with gpt-5.4:', costEstimateText);
 
 		// Parse dollar amounts from the text
 		const allCostMatches = costEstimateText?.matchAll(/\$(\d+\.\d+)/g);
@@ -510,7 +510,7 @@ Our methodology involves comparing cost estimates between the workflow page and 
 		const [cleanupCost, translationCost, combinedCost] = costValues;
 		console.log('Cleanup:', cleanupCost, 'Translation:', translationCost, 'Combined:', combinedCost);
 
-		// With gpt-5.2, costs should be > $0.00 for this content size
+		// With gpt-5.4, costs should be > $0.00 for this content size
 		expect(cleanupCost).toBeGreaterThan(0);
 		expect(translationCost).toBeGreaterThan(0);
 		expect(combinedCost).toBeGreaterThan(0);
@@ -522,8 +522,8 @@ Our methodology involves comparing cost estimates between the workflow page and 
 	});
 
 	test('cost estimate updates when model is changed to expensive model', async ({ page }) => {
-		// Add a LARGE markdown document - needs enough content that gpt-5.2 cost > $0.01
-		// With gpt-5.2 pricing ($2.5/1M input, $10/1M output), we need ~4000+ tokens for visible cost
+		// Add a LARGE markdown document - needs enough content that gpt-5.4 cost > $0.01
+		// With gpt-5.4 pricing ($2.5/1M input, $10/1M output), we need ~4000+ tokens for visible cost
 		const largeContent = `# The Complete Guide to Software Testing
 
 ## Introduction
@@ -585,36 +585,36 @@ Testing is essential for quality software. A balanced approach combines multiple
 
 		await page.goto('/workflow');
 
-		// Select the markdown document (default model is gpt-5-mini)
+		// Select the markdown document (default model is gpt-5.4-mini)
 		await page.getByTestId('document-select').selectOption('doc_md_model_test');
 
 		// Wait for initial cost estimate
 		await expect(page.getByTestId('cost-estimate')).toBeVisible({ timeout: 5000 });
 		const initialText = await page.getByTestId('cost-estimate').textContent();
-		console.log('Initial cost (gpt-5-mini):', initialText);
+		console.log('Initial cost (gpt-5.4-mini):', initialText);
 
-		// Now change to gpt-5.2 (expensive model) for cleanup
+		// Now change to gpt-5.4 (expensive model) for cleanup
 		const cleanupModelSelect = page.locator('text=Cleanup Settings').locator('..').locator('select').first();
-		await cleanupModelSelect.selectOption('gpt-5.2');
+		await cleanupModelSelect.selectOption('gpt-5.4');
 
 		// Wait a moment for reactivity
 		await page.waitForTimeout(500);
 
 		// Get the updated cost
 		const updatedText = await page.getByTestId('cost-estimate').textContent();
-		console.log('After gpt-5.2 selection:', updatedText);
+		console.log('After gpt-5.4 selection:', updatedText);
 
 		// BUG TEST: The cost should CHANGE when the model changes
 		// Even if both show $0.00, the token breakdown or internal value should differ
-		// But ideally with this larger content, gpt-5.2 should show > $0.00
+		// But ideally with this larger content, gpt-5.4 should show > $0.00
 
 		// Parse all dollar values
 		const updatedMatches = updatedText?.matchAll(/\$(\d+\.\d+)/g);
 		const updatedCosts = updatedMatches ? [...updatedMatches].map(m => parseFloat(m[1])) : [];
 		console.log('Updated costs:', updatedCosts);
 
-		// With 2000+ word document and gpt-5.2 pricing, cleanup cost should be > $0.01
-		expect(updatedCosts[0]).toBeGreaterThan(0); // Cleanup should be > $0.00 with gpt-5.2
+		// With 2000+ word document and gpt-5.4 pricing, cleanup cost should be > $0.01
+		expect(updatedCosts[0]).toBeGreaterThan(0); // Cleanup should be > $0.00 with gpt-5.4
 	});
 
 	test('selecting PDF document shows Convert & Estimate button', async ({ page }) => {

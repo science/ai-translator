@@ -337,13 +337,13 @@ describe('Workflow Utilities', () => {
 		});
 
 		it('has correct default cleanup settings', () => {
-			expect(DEFAULT_CLEANUP_SETTINGS.model).toBe('gpt-5-mini');
+			expect(DEFAULT_CLEANUP_SETTINGS.model).toBe('gpt-5.4-mini');
 			expect(DEFAULT_CLEANUP_SETTINGS.chunkSize).toBe(4000);
 			expect(DEFAULT_CLEANUP_SETTINGS.reasoningEffort).toBe('medium');
 		});
 
 		it('has correct default translation settings', () => {
-			expect(DEFAULT_TRANSLATION_SETTINGS.model).toBe('gpt-5-mini');
+			expect(DEFAULT_TRANSLATION_SETTINGS.model).toBe('gpt-5.4-mini');
 			expect(DEFAULT_TRANSLATION_SETTINGS.chunkSize).toBe(4000);
 			expect(DEFAULT_TRANSLATION_SETTINGS.reasoningEffort).toBe('medium');
 			expect(DEFAULT_TRANSLATION_SETTINGS.contextAware).toBe(true);

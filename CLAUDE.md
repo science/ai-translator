@@ -137,7 +137,7 @@ node src/index.js <input-file> [options]
 - `--rectify`: Enable rectification mode (English-to-English cleanup)
 - `--output-dir <path>`: Output directory (default: `output/`)
 - `--chunk-size <number>`: Max chunk size in characters (default: `4000`)
-- `--model <model-name>`: OpenAI model (default: `gpt-5-mini`)
+- `--model <model-name>`: OpenAI model (default: `gpt-5.4-mini`)
 - `--reasoning-effort <low|medium|high>`: GPT-5 reasoning effort (default: `medium`)
 
 **Note:** `--pdf-to-md` and `--rectify` are mutually exclusive.
@@ -338,8 +338,8 @@ The rectifier in `src/rectifier.js` uses a specialized system prompt emphasizing
 
 ## Important Notes
 
-- **GPT-5 models**: gpt-5.2 and gpt-5-mini are real, valid models. Never question their availability.
-- **Default model**: Currently `gpt-5-mini`
+- **GPT-5 models**: gpt-5.4 and gpt-5.4-mini are real, valid models. Never question their availability.
+- **Default model**: Currently `gpt-5.4-mini`
 - **Model-specific parameters**: GPT-5 models require `verbosity` and `reasoning_effort` parameters in API calls
 - **ES modules**: All imports must include `.js` extension
 - **Timing**: GPT-5 models are slower (~20-25s per chunk) due to extended reasoning; GPT-4.1 is faster (~3-5s per chunk)
@@ -355,8 +355,8 @@ Models are configured in a **single source of truth** for easy updates:
 
 | Model | Series | Default Reasoning Effort | Supported Efforts |
 |-------|--------|-------------------------|-------------------|
-| gpt-5.2 | 5 | none | none, low, medium, high |
-| gpt-5-mini | 5 | medium | minimal, low, medium, high |
+| gpt-5.4 | 5 | none | none, low, medium, high |
+| gpt-5.4-mini | 5 | medium | none, low, medium, high |
 | gpt-4.1 | 4 | N/A | N/A |
 | gpt-4.1-mini | 4 | N/A | N/A |
 
@@ -368,8 +368,8 @@ Models are configured in a **single source of truth** for easy updates:
    // src/models.js (CLI) or web-app/src/lib/models.ts (Web App)
    export const MODELS = [
      {
-       id: 'gpt-5.2',           // API model name
-       label: 'gpt-5.2',        // Display label in UI
+       id: 'gpt-5.4',           // API model name
+       label: 'gpt-5.4',        // Display label in UI
        series: 5,               // Model series (4 or 5)
        defaultReasoningEffort: 'none',  // Default for this model
        supportedReasoningEfforts: ['none', 'low', 'medium', 'high']  // Valid options
@@ -380,7 +380,7 @@ Models are configured in a **single source of truth** for easy updates:
 
 2. **Update DEFAULT_MODEL** if changing the default:
    ```javascript
-   export const DEFAULT_MODEL = 'gpt-5-mini';
+   export const DEFAULT_MODEL = 'gpt-5.4-mini';
    ```
 
 3. **Run tests** to verify:
@@ -397,16 +397,15 @@ Models are configured in a **single source of truth** for easy updates:
 ### Helper Functions Available
 
 - `is5SeriesModel(modelId)` - Check if model is GPT-5 series (uses reasoning effort)
-- `isGpt52Model(modelId)` - Check if model is GPT-5.2 family specifically
 - `getModelById(modelId)` - Get full model config by ID
 - `getReasoningEffortOptions(modelId)` - Get dropdown options for UI
 - `getValidReasoningEffort(modelId, requested)` - Convert/validate reasoning effort
 
 ### Reasoning Effort Differences
 
-- **GPT-5.2**: Uses `none` as lowest level (default: `none`)
-- **GPT-5-mini**: Uses `minimal` as lowest level (default: `medium`)
-- The helper functions automatically convert between these when needed
+- **GPT-5.4**: Default reasoning effort is `none`
+- **GPT-5.4-mini**: Default reasoning effort is `medium`
+- Both models support the same levels: `none`, `low`, `medium`, `high`
 
 ## Rectification Architecture
 

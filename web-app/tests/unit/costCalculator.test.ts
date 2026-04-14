@@ -65,24 +65,24 @@ describe('costCalculator', () => {
 	});
 
 	describe('calculateCost', () => {
-		it('calculates cost for token usage with gpt-5-mini', () => {
+		it('calculates cost for token usage with gpt-5.4-mini', () => {
 			const usage: TokenUsage = {
 				promptTokens: 1000,
 				completionTokens: 500,
 				totalTokens: 1500
 			};
-			const cost = calculateCost(usage, 'gpt-5-mini');
+			const cost = calculateCost(usage, 'gpt-5.4-mini');
 			expect(cost).toBeGreaterThan(0);
 			expect(typeof cost).toBe('number');
 		});
 
-		it('calculates cost for gpt-5.2', () => {
+		it('calculates cost for gpt-5.4', () => {
 			const usage: TokenUsage = {
 				promptTokens: 1000,
 				completionTokens: 500,
 				totalTokens: 1500
 			};
-			const cost = calculateCost(usage, 'gpt-5.2');
+			const cost = calculateCost(usage, 'gpt-5.4');
 			expect(cost).toBeGreaterThan(0);
 		});
 
@@ -102,7 +102,7 @@ describe('costCalculator', () => {
 				completionTokens: 0,
 				totalTokens: 0
 			};
-			const cost = calculateCost(usage, 'gpt-5-mini');
+			const cost = calculateCost(usage, 'gpt-5.4-mini');
 			expect(cost).toBe(0);
 		});
 
@@ -125,22 +125,22 @@ describe('costCalculator', () => {
 		];
 
 		it('estimates cost for translation job', () => {
-			const estimate = estimateJobCost(sampleChunks, 'gpt-5-mini', 'translate');
+			const estimate = estimateJobCost(sampleChunks, 'gpt-5.4-mini', 'translate');
 			expect(estimate.estimatedInputTokens).toBeGreaterThan(0);
 			expect(estimate.estimatedOutputTokens).toBeGreaterThan(0);
 			expect(estimate.estimatedCostUsd).toBeGreaterThan(0);
 		});
 
 		it('estimates cost for cleanup job', () => {
-			const estimate = estimateJobCost(sampleChunks, 'gpt-5-mini', 'cleanup');
+			const estimate = estimateJobCost(sampleChunks, 'gpt-5.4-mini', 'cleanup');
 			expect(estimate.estimatedInputTokens).toBeGreaterThan(0);
 			expect(estimate.estimatedOutputTokens).toBeGreaterThan(0);
 			expect(estimate.estimatedCostUsd).toBeGreaterThan(0);
 		});
 
 		it('translation has higher output estimate than cleanup', () => {
-			const translateEstimate = estimateJobCost(sampleChunks, 'gpt-5-mini', 'translate');
-			const cleanupEstimate = estimateJobCost(sampleChunks, 'gpt-5-mini', 'cleanup');
+			const translateEstimate = estimateJobCost(sampleChunks, 'gpt-5.4-mini', 'translate');
+			const cleanupEstimate = estimateJobCost(sampleChunks, 'gpt-5.4-mini', 'cleanup');
 			// Translation to Japanese typically produces more tokens
 			expect(translateEstimate.estimatedOutputTokens).toBeGreaterThan(
 				cleanupEstimate.estimatedOutputTokens
@@ -148,7 +148,7 @@ describe('costCalculator', () => {
 		});
 
 		it('returns zero estimates for empty chunks', () => {
-			const estimate = estimateJobCost([], 'gpt-5-mini', 'translate');
+			const estimate = estimateJobCost([], 'gpt-5.4-mini', 'translate');
 			expect(estimate.estimatedInputTokens).toBe(0);
 			expect(estimate.estimatedOutputTokens).toBe(0);
 			expect(estimate.estimatedCostUsd).toBe(0);
@@ -156,7 +156,7 @@ describe('costCalculator', () => {
 
 		it('includes system prompt overhead in input tokens', () => {
 			const singleChunk = ['Short text'];
-			const estimate = estimateJobCost(singleChunk, 'gpt-5-mini', 'translate');
+			const estimate = estimateJobCost(singleChunk, 'gpt-5.4-mini', 'translate');
 			const plainTokens = estimateTokenCount('Short text');
 			// Input tokens should be higher than just the chunk due to system prompt
 			expect(estimate.estimatedInputTokens).toBeGreaterThan(plainTokens);
@@ -197,7 +197,7 @@ describe('costCalculator', () => {
 			// Import chunker to mimic what cleanup page does
 			const { chunkBySize } = await import('$lib/services/chunker');
 
-			const model = 'gpt-5-mini';
+			const model = 'gpt-5.4-mini';
 			const chunkSize = 4000;
 
 			// Method 1: How cleanup page does it
@@ -217,7 +217,7 @@ describe('costCalculator', () => {
 		it('produces same translate estimate as estimateJobCost with same content', async () => {
 			const { chunkBySize } = await import('$lib/services/chunker');
 
-			const model = 'gpt-5-mini';
+			const model = 'gpt-5.4-mini';
 			const chunkSize = 4000;
 
 			// Method 1: How translate page does it
@@ -235,34 +235,34 @@ describe('costCalculator', () => {
 		});
 
 		it('returns combined estimate for cleanup and translation phases', () => {
-			const estimate = estimateWorkflowCost(sampleContent, 'gpt-5-mini', 'gpt-5-mini', 4000);
+			const estimate = estimateWorkflowCost(sampleContent, 'gpt-5.4-mini', 'gpt-5.4-mini', 4000);
 			expect(estimate.cleanup.estimatedCostUsd).toBeGreaterThan(0);
 			expect(estimate.translate.estimatedCostUsd).toBeGreaterThan(0);
 			expect(estimate.totalCostUsd).toBeGreaterThan(0);
 		});
 
 		it('total cost equals sum of cleanup and translation costs', () => {
-			const estimate = estimateWorkflowCost(sampleContent, 'gpt-5-mini', 'gpt-5-mini', 4000);
+			const estimate = estimateWorkflowCost(sampleContent, 'gpt-5.4-mini', 'gpt-5.4-mini', 4000);
 			const expectedTotal = estimate.cleanup.estimatedCostUsd + estimate.translate.estimatedCostUsd;
 			expect(estimate.totalCostUsd).toBeCloseTo(expectedTotal, 5);
 		});
 
 		it('returns zero estimates for empty content', () => {
-			const estimate = estimateWorkflowCost('', 'gpt-5-mini', 'gpt-5-mini', 4000);
+			const estimate = estimateWorkflowCost('', 'gpt-5.4-mini', 'gpt-5.4-mini', 4000);
 			expect(estimate.cleanup.estimatedCostUsd).toBe(0);
 			expect(estimate.translate.estimatedCostUsd).toBe(0);
 			expect(estimate.totalCostUsd).toBe(0);
 		});
 
 		it('uses different models for each phase', () => {
-			// gpt-5.2 is more expensive than gpt-5-mini
-			const expensiveCleanup = estimateWorkflowCost(sampleContent, 'gpt-5.2', 'gpt-5-mini', 4000);
-			const cheapCleanup = estimateWorkflowCost(sampleContent, 'gpt-5-mini', 'gpt-5-mini', 4000);
+			// gpt-5.4 is more expensive than gpt-5.4-mini
+			const expensiveCleanup = estimateWorkflowCost(sampleContent, 'gpt-5.4', 'gpt-5.4-mini', 4000);
+			const cheapCleanup = estimateWorkflowCost(sampleContent, 'gpt-5.4-mini', 'gpt-5.4-mini', 4000);
 			expect(expensiveCleanup.cleanup.estimatedCostUsd).toBeGreaterThan(cheapCleanup.cleanup.estimatedCostUsd);
 		});
 
 		it('includes total token count', () => {
-			const estimate = estimateWorkflowCost(sampleContent, 'gpt-5-mini', 'gpt-5-mini', 4000);
+			const estimate = estimateWorkflowCost(sampleContent, 'gpt-5.4-mini', 'gpt-5.4-mini', 4000);
 			const expectedTokens =
 				estimate.cleanup.estimatedInputTokens + estimate.cleanup.estimatedOutputTokens +
 				estimate.translate.estimatedInputTokens + estimate.translate.estimatedOutputTokens;
@@ -270,8 +270,8 @@ describe('costCalculator', () => {
 		});
 
 		it('respects chunk size parameter', () => {
-			const smallChunks = estimateWorkflowCost(sampleContent, 'gpt-5-mini', 'gpt-5-mini', 50);
-			const largeChunks = estimateWorkflowCost(sampleContent, 'gpt-5-mini', 'gpt-5-mini', 4000);
+			const smallChunks = estimateWorkflowCost(sampleContent, 'gpt-5.4-mini', 'gpt-5.4-mini', 50);
+			const largeChunks = estimateWorkflowCost(sampleContent, 'gpt-5.4-mini', 'gpt-5.4-mini', 4000);
 			// Smaller chunks = more chunks = more system prompt overhead = higher cost
 			expect(smallChunks.totalCostUsd).toBeGreaterThan(largeChunks.totalCostUsd);
 		});
@@ -357,8 +357,8 @@ describe('costCalculator', () => {
 			];
 
 			it('increases output tokens for high reasoning effort', () => {
-				const noReasoning = estimateJobCost(sampleChunks, 'gpt-5-mini', 'cleanup');
-				const highReasoning = estimateJobCost(sampleChunks, 'gpt-5-mini', 'cleanup', 'high');
+				const noReasoning = estimateJobCost(sampleChunks, 'gpt-5.4-mini', 'cleanup');
+				const highReasoning = estimateJobCost(sampleChunks, 'gpt-5.4-mini', 'cleanup', 'high');
 
 				// High reasoning should have more output tokens (3.5x multiplier)
 				expect(highReasoning.estimatedOutputTokens).toBeGreaterThan(noReasoning.estimatedOutputTokens);
@@ -368,16 +368,16 @@ describe('costCalculator', () => {
 			});
 
 			it('increases cost for medium reasoning effort', () => {
-				const noReasoning = estimateJobCost(sampleChunks, 'gpt-5-mini', 'translate');
-				const mediumReasoning = estimateJobCost(sampleChunks, 'gpt-5-mini', 'translate', 'medium');
+				const noReasoning = estimateJobCost(sampleChunks, 'gpt-5.4-mini', 'translate');
+				const mediumReasoning = estimateJobCost(sampleChunks, 'gpt-5.4-mini', 'translate', 'medium');
 
 				// Medium reasoning should cost more (2.0x output multiplier)
 				expect(mediumReasoning.estimatedCostUsd).toBeGreaterThan(noReasoning.estimatedCostUsd);
 			});
 
 			it('does not change input tokens for reasoning effort', () => {
-				const noReasoning = estimateJobCost(sampleChunks, 'gpt-5-mini', 'cleanup');
-				const highReasoning = estimateJobCost(sampleChunks, 'gpt-5-mini', 'cleanup', 'high');
+				const noReasoning = estimateJobCost(sampleChunks, 'gpt-5.4-mini', 'cleanup');
+				const highReasoning = estimateJobCost(sampleChunks, 'gpt-5.4-mini', 'cleanup', 'high');
 
 				// Input tokens should be the same regardless of reasoning effort
 				expect(highReasoning.estimatedInputTokens).toBe(noReasoning.estimatedInputTokens);
@@ -401,8 +401,8 @@ describe('costCalculator', () => {
 					high: 5.0
 				};
 
-				const defaultHigh = estimateJobCost(sampleChunks, 'gpt-5-mini', 'cleanup', 'high');
-				const customHigh = estimateJobCost(sampleChunks, 'gpt-5-mini', 'cleanup', 'high', customMultipliers);
+				const defaultHigh = estimateJobCost(sampleChunks, 'gpt-5.4-mini', 'cleanup', 'high');
+				const customHigh = estimateJobCost(sampleChunks, 'gpt-5.4-mini', 'cleanup', 'high', customMultipliers);
 
 				// Custom 5.0x vs default 3.5x
 				expect(customHigh.estimatedOutputTokens).toBeGreaterThan(defaultHigh.estimatedOutputTokens);
@@ -413,9 +413,9 @@ describe('costCalculator', () => {
 			const sampleContent = '# Test Document\n\nThis is sample content for testing workflow cost estimation with reasoning effort multipliers.';
 
 			it('applies reasoning effort to both cleanup and translation phases', () => {
-				const noReasoning = estimateWorkflowCost(sampleContent, 'gpt-5-mini', 'gpt-5-mini', 4000);
+				const noReasoning = estimateWorkflowCost(sampleContent, 'gpt-5.4-mini', 'gpt-5.4-mini', 4000);
 				const highReasoning = estimateWorkflowCost(
-					sampleContent, 'gpt-5-mini', 'gpt-5-mini', 4000,
+					sampleContent, 'gpt-5.4-mini', 'gpt-5.4-mini', 4000,
 					'high', 'high'
 				);
 
@@ -430,11 +430,11 @@ describe('costCalculator', () => {
 
 			it('allows different reasoning efforts for each phase', () => {
 				const lowCleanupHighTranslate = estimateWorkflowCost(
-					sampleContent, 'gpt-5-mini', 'gpt-5-mini', 4000,
+					sampleContent, 'gpt-5.4-mini', 'gpt-5.4-mini', 4000,
 					'low', 'high'
 				);
 				const highCleanupLowTranslate = estimateWorkflowCost(
-					sampleContent, 'gpt-5-mini', 'gpt-5-mini', 4000,
+					sampleContent, 'gpt-5.4-mini', 'gpt-5.4-mini', 4000,
 					'high', 'low'
 				);
 
@@ -458,11 +458,11 @@ describe('costCalculator', () => {
 				};
 
 				const defaultMedium = estimateWorkflowCost(
-					sampleContent, 'gpt-5-mini', 'gpt-5-mini', 4000,
+					sampleContent, 'gpt-5.4-mini', 'gpt-5.4-mini', 4000,
 					'medium', 'medium'
 				);
 				const customMedium = estimateWorkflowCost(
-					sampleContent, 'gpt-5-mini', 'gpt-5-mini', 4000,
+					sampleContent, 'gpt-5.4-mini', 'gpt-5.4-mini', 4000,
 					'medium', 'medium', customMultipliers
 				);
 

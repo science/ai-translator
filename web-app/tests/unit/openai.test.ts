@@ -337,7 +337,7 @@ describe('openai service', () => {
 
 				const client = createOpenAIClient({ apiKey: 'test-key' });
 				await client.createChatCompletion({
-					model: 'gpt-5-mini',
+					model: 'gpt-5.4-mini',
 					messages: [{ role: 'user', content: 'Hi' }],
 					verbosity: 'low',
 					reasoning_effort: 'medium'

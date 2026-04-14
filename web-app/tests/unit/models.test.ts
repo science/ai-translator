@@ -3,7 +3,6 @@ import {
   MODELS,
   DEFAULT_MODEL,
   is5SeriesModel,
-  isGpt52Model,
   getModelById,
   getReasoningEffortOptions,
   getValidReasoningEffort,
@@ -29,14 +28,14 @@ describe('models', () => {
       }
     });
 
-    it('includes gpt-5.2 model', () => {
-      const gpt52 = MODELS.find(m => m.id === 'gpt-5.2');
-      expect(gpt52).toBeDefined();
-      expect(gpt52?.series).toBe(5);
+    it('includes gpt-5.4 model', () => {
+      const gpt54 = MODELS.find(m => m.id === 'gpt-5.4');
+      expect(gpt54).toBeDefined();
+      expect(gpt54?.series).toBe(5);
     });
 
-    it('includes gpt-5-mini model', () => {
-      const gpt5mini = MODELS.find(m => m.id === 'gpt-5-mini');
+    it('includes gpt-5.4-mini model', () => {
+      const gpt5mini = MODELS.find(m => m.id === 'gpt-5.4-mini');
       expect(gpt5mini).toBeDefined();
       expect(gpt5mini?.series).toBe(5);
     });
@@ -53,24 +52,24 @@ describe('models', () => {
       expect(gpt41mini?.series).toBe(4);
     });
 
-    it('does NOT include gpt-5.1 model (replaced by gpt-5.2)', () => {
+    it('does NOT include gpt-5.1 model (replaced by gpt-5.4)', () => {
       const gpt51 = MODELS.find(m => m.id === 'gpt-5.1');
       expect(gpt51).toBeUndefined();
     });
 
-    it('gpt-5.2 has reasoning effort config with none as default', () => {
-      const gpt52 = MODELS.find(m => m.id === 'gpt-5.2');
-      expect(gpt52?.defaultReasoningEffort).toBe('none');
-      expect(gpt52?.supportedReasoningEfforts).toContain('none');
-      expect(gpt52?.supportedReasoningEfforts).toContain('low');
-      expect(gpt52?.supportedReasoningEfforts).toContain('medium');
-      expect(gpt52?.supportedReasoningEfforts).toContain('high');
+    it('gpt-5.4 has reasoning effort config with none as default', () => {
+      const gpt54 = MODELS.find(m => m.id === 'gpt-5.4');
+      expect(gpt54?.defaultReasoningEffort).toBe('none');
+      expect(gpt54?.supportedReasoningEfforts).toContain('none');
+      expect(gpt54?.supportedReasoningEfforts).toContain('low');
+      expect(gpt54?.supportedReasoningEfforts).toContain('medium');
+      expect(gpt54?.supportedReasoningEfforts).toContain('high');
     });
 
-    it('gpt-5-mini has reasoning effort config with medium as default', () => {
-      const gpt5mini = MODELS.find(m => m.id === 'gpt-5-mini');
+    it('gpt-5.4-mini has reasoning effort config with medium as default', () => {
+      const gpt5mini = MODELS.find(m => m.id === 'gpt-5.4-mini');
       expect(gpt5mini?.defaultReasoningEffort).toBe('medium');
-      expect(gpt5mini?.supportedReasoningEfforts).toContain('minimal');
+      expect(gpt5mini?.supportedReasoningEfforts).toContain('none');
       expect(gpt5mini?.supportedReasoningEfforts).toContain('low');
       expect(gpt5mini?.supportedReasoningEfforts).toContain('medium');
       expect(gpt5mini?.supportedReasoningEfforts).toContain('high');
@@ -84,8 +83,8 @@ describe('models', () => {
   });
 
   describe('DEFAULT_MODEL', () => {
-    it('is gpt-5-mini', () => {
-      expect(DEFAULT_MODEL).toBe('gpt-5-mini');
+    it('is gpt-5.4-mini', () => {
+      expect(DEFAULT_MODEL).toBe('gpt-5.4-mini');
     });
 
     it('exists in MODELS array', () => {
@@ -95,12 +94,12 @@ describe('models', () => {
   });
 
   describe('is5SeriesModel', () => {
-    it('returns true for gpt-5.2', () => {
-      expect(is5SeriesModel('gpt-5.2')).toBe(true);
+    it('returns true for gpt-5.4', () => {
+      expect(is5SeriesModel('gpt-5.4')).toBe(true);
     });
 
-    it('returns true for gpt-5-mini', () => {
-      expect(is5SeriesModel('gpt-5-mini')).toBe(true);
+    it('returns true for gpt-5.4-mini', () => {
+      expect(is5SeriesModel('gpt-5.4-mini')).toBe(true);
     });
 
     it('returns true for gpt-5-nano', () => {
@@ -120,33 +119,11 @@ describe('models', () => {
     });
   });
 
-  describe('isGpt52Model', () => {
-    it('returns true for gpt-5.2', () => {
-      expect(isGpt52Model('gpt-5.2')).toBe(true);
-    });
-
-    it('returns true for gpt-5.2-preview', () => {
-      expect(isGpt52Model('gpt-5.2-preview')).toBe(true);
-    });
-
-    it('returns false for gpt-5-mini', () => {
-      expect(isGpt52Model('gpt-5-mini')).toBe(false);
-    });
-
-    it('returns false for gpt-5.1', () => {
-      expect(isGpt52Model('gpt-5.1')).toBe(false);
-    });
-
-    it('returns false for gpt-4.1', () => {
-      expect(isGpt52Model('gpt-4.1')).toBe(false);
-    });
-  });
-
   describe('getModelById', () => {
     it('returns model object for valid id', () => {
-      const model = getModelById('gpt-5.2');
+      const model = getModelById('gpt-5.4');
       expect(model).toBeDefined();
-      expect(model?.id).toBe('gpt-5.2');
+      expect(model?.id).toBe('gpt-5.4');
     });
 
     it('returns undefined for invalid id', () => {
@@ -161,8 +138,8 @@ describe('models', () => {
   });
 
   describe('getReasoningEffortOptions', () => {
-    it('returns options with none for gpt-5.2', () => {
-      const options = getReasoningEffortOptions('gpt-5.2');
+    it('returns options with none for gpt-5.4', () => {
+      const options = getReasoningEffortOptions('gpt-5.4');
       expect(options).toEqual([
         { value: 'none', label: 'None' },
         { value: 'low', label: 'Low' },
@@ -171,10 +148,10 @@ describe('models', () => {
       ]);
     });
 
-    it('returns options with minimal for gpt-5-mini', () => {
-      const options = getReasoningEffortOptions('gpt-5-mini');
+    it('returns options with none for gpt-5.4-mini', () => {
+      const options = getReasoningEffortOptions('gpt-5.4-mini');
       expect(options).toEqual([
-        { value: 'minimal', label: 'Minimal' },
+        { value: 'none', label: 'None' },
         { value: 'low', label: 'Low' },
         { value: 'medium', label: 'Medium' },
         { value: 'high', label: 'High' }
@@ -197,25 +174,19 @@ describe('models', () => {
       expect(getValidReasoningEffort('gpt-4.1', 'medium')).toBeNull();
     });
 
-    it('returns none as default for gpt-5.2', () => {
-      expect(getValidReasoningEffort('gpt-5.2', undefined)).toBe('none');
+    it('returns none as default for gpt-5.4', () => {
+      expect(getValidReasoningEffort('gpt-5.4', undefined)).toBe('none');
     });
 
-    it('converts minimal to none for gpt-5.2', () => {
-      expect(getValidReasoningEffort('gpt-5.2', 'minimal')).toBe('none');
+    it('returns medium as default for gpt-5.4-mini', () => {
+      expect(getValidReasoningEffort('gpt-5.4-mini', undefined)).toBe('medium');
     });
 
-    it('returns medium as default for gpt-5-mini', () => {
-      expect(getValidReasoningEffort('gpt-5-mini', undefined)).toBe('medium');
-    });
-
-    it('converts none to minimal for gpt-5-mini', () => {
-      expect(getValidReasoningEffort('gpt-5-mini', 'none')).toBe('minimal');
-    });
-
-    it('passes through valid values unchanged', () => {
-      expect(getValidReasoningEffort('gpt-5.2', 'high')).toBe('high');
-      expect(getValidReasoningEffort('gpt-5-mini', 'low')).toBe('low');
+    it('passes through requested effort unchanged', () => {
+      expect(getValidReasoningEffort('gpt-5.4', 'high')).toBe('high');
+      expect(getValidReasoningEffort('gpt-5.4-mini', 'low')).toBe('low');
+      expect(getValidReasoningEffort('gpt-5.4', 'none')).toBe('none');
+      expect(getValidReasoningEffort('gpt-5.4-mini', 'none')).toBe('none');
     });
   });
 
@@ -228,7 +199,7 @@ describe('models', () => {
     });
 
     it('ReasoningEffortOption type is correctly defined', () => {
-      const options = getReasoningEffortOptions('gpt-5.2');
+      const options = getReasoningEffortOptions('gpt-5.4');
       if (options) {
         const option: ReasoningEffortOption = options[0];
         expect(option.value).toBeDefined();

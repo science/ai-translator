@@ -4,6 +4,7 @@
  */
 
 import { convertMarkdownToDocx } from '@mohtasham/md-to-docx';
+import { triggerDownload } from './downloadUtils';
 
 export interface DocxExportResult {
 	blob: Blob;
@@ -19,20 +20,6 @@ export async function markdownToDocx(markdown: string): Promise<Blob> {
 }
 
 /**
- * Trigger a file download in the browser
- */
-function triggerDownload(blob: Blob, filename: string): void {
-	const url = URL.createObjectURL(blob);
-	const a = document.createElement('a');
-	a.href = url;
-	a.download = filename;
-	document.body.appendChild(a);
-	a.click();
-	document.body.removeChild(a);
-	URL.revokeObjectURL(url);
-}
-
-/**
  * Convert markdown and trigger download in browser
  */
 export async function exportMarkdownAsDocx(
@@ -44,7 +31,6 @@ export async function exportMarkdownAsDocx(
 	// Ensure filename ends with .docx
 	const docxFilename = filename.endsWith('.docx') ? filename : `${filename}.docx`;
 
-	// Trigger download using standard browser mechanism
 	triggerDownload(blob, docxFilename);
 
 	return { blob, filename: docxFilename };
