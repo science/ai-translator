@@ -185,6 +185,103 @@ describe('epubExporter', () => {
 		});
 	});
 
+	describe('UUID generation fallback', () => {
+		it('generates valid UUID when crypto.randomUUID is unavailable (insecure context)', async () => {
+			const originalRandomUUID = crypto.randomUUID;
+			try {
+				// Simulate insecure context where randomUUID is undefined
+				// @ts-expect-error - deliberately removing for test
+				crypto.randomUUID = undefined;
+
+				await markdownToEpub('# Test');
+
+				const opfCall = mockFile.mock.calls.find(
+					(call: unknown[]) => call[0] === 'OEBPS/content.opf'
+				);
+				expect(opfCall).toBeDefined();
+				// Should contain a valid UUID pattern
+				expect(opfCall![1]).toMatch(/urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/);
+			} finally {
+				crypto.randomUUID = originalRandomUUID;
+			}
+		});
+	});
+
+	describe('heading ID deduplication', () => {
+		it('generates unique IDs for duplicate heading text', async () => {
+			await markdownToEpub('# Intro\n\n## Existential\n\nText.\n\n## Existential\n\nMore.');
+
+			const contentCall = mockFile.mock.calls.find(
+				(call: unknown[]) => call[0] === 'OEBPS/content.xhtml'
+			);
+			const xhtml = contentCall![1] as string;
+			const ids = [...xhtml.matchAll(/id="([^"]+)"/g)].map((m) => m[1]);
+			expect(new Set(ids).size).toBe(ids.length);
+			expect(ids).toContain('existential');
+			expect(ids).toContain('existential-2');
+		});
+
+		it('generates unique IDs for three identical headings', async () => {
+			await markdownToEpub('## A\n\nText.\n\n## A\n\nText.\n\n## A\n\nText.');
+
+			const contentCall = mockFile.mock.calls.find(
+				(call: unknown[]) => call[0] === 'OEBPS/content.xhtml'
+			);
+			const xhtml = contentCall![1] as string;
+			const ids = [...xhtml.matchAll(/id="([^"]+)"/g)].map((m) => m[1]);
+			expect(ids).toEqual(['a', 'a-2', 'a-3']);
+		});
+	});
+
+	describe('heading ID cleanup', () => {
+		it('does not produce trailing dashes in IDs', async () => {
+			await markdownToEpub('## Counselling &\n\nText.');
+
+			const tocCall = mockFile.mock.calls.find(
+				(call: unknown[]) => call[0] === 'OEBPS/toc.xhtml'
+			);
+			const toc = tocCall![1] as string;
+			expect(toc).not.toMatch(/href="content\.xhtml#[^"]*-"/);
+		});
+	});
+
+	describe('TOC-content ID consistency', () => {
+		it('every TOC href fragment exists as an id in content', async () => {
+			await markdownToEpub(
+				'# Title\n\n## Existential\n\nA.\n\n## Existential\n\nB.\n\n## Counselling &\n\nC.'
+			);
+
+			const contentCall = mockFile.mock.calls.find(
+				(call: unknown[]) => call[0] === 'OEBPS/content.xhtml'
+			);
+			const tocCall = mockFile.mock.calls.find(
+				(call: unknown[]) => call[0] === 'OEBPS/toc.xhtml'
+			);
+			const contentIds = [...(contentCall![1] as string).matchAll(/id="([^"]+)"/g)].map(
+				(m) => m[1]
+			);
+			const tocFragments = [
+				...(tocCall![1] as string).matchAll(/href="content\.xhtml#([^"]+)"/g)
+			].map((m) => m[1]);
+
+			for (const frag of tocFragments) {
+				expect(contentIds).toContain(frag);
+			}
+		});
+	});
+
+	describe('special character heading ID injection', () => {
+		it('injects id for headings containing HTML entities (ampersand)', async () => {
+			await markdownToEpub('## Counselling & Therapy\n\nContent.');
+
+			const contentCall = mockFile.mock.calls.find(
+				(call: unknown[]) => call[0] === 'OEBPS/content.xhtml'
+			);
+			const xhtml = contentCall![1] as string;
+			expect(xhtml).toMatch(/<h2 id="[^"]+">Counselling &amp; Therapy<\/h2>/);
+		});
+	});
+
 	describe('isEpubExportAvailable', () => {
 		it('returns true when JSZip is available', () => {
 			expect(isEpubExportAvailable()).toBe(true);

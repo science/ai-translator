@@ -1,4 +1,9 @@
 import { Page } from '@playwright/test';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import { mkdtemp, rm, readFile, copyFile } from 'fs/promises';
+import { tmpdir } from 'os';
+import { join } from 'path';
 
 /**
  * Clears all browser storage (localStorage and IndexedDB)
@@ -200,6 +205,73 @@ export async function mockOpenAIError(page: Page, errorMessage: string, statusCo
 			})
 		});
 	});
+}
+
+/**
+ * Result from running epubcheck on an EPUB file
+ */
+export interface EpubcheckMessage {
+	ID: string;
+	severity: string;
+	message: string;
+}
+
+export interface EpubcheckResult {
+	valid: boolean;
+	errors: number;
+	warnings: number;
+	fatals: number;
+	messages: EpubcheckMessage[];
+}
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * Validates an EPUB file using the system epubcheck CLI.
+ * Returns structured results parsed from JSON output.
+ */
+export async function validateEpubWithEpubcheck(epubPath: string): Promise<EpubcheckResult> {
+	const tmpDir = await mkdtemp(join(tmpdir(), 'epubcheck-'));
+	const jsonPath = join(tmpDir, 'result.json');
+	// epubcheck requires .epub extension to auto-detect file type
+	const epubCopy = join(tmpDir, 'test.epub');
+	await copyFile(epubPath, epubCopy);
+
+	try {
+		await execFileAsync('epubcheck', [epubCopy, '--json', jsonPath]);
+	} catch (err: unknown) {
+		// epubcheck exits non-zero when validation errors are found — that's expected.
+		// Check that it actually ran by looking for the JSON output file.
+		const execErr = err as { stdout?: string; stderr?: string; code?: number };
+		try {
+			await readFile(jsonPath);
+		} catch {
+			throw new Error(
+				`epubcheck failed to produce output.\nstdout: ${execErr.stdout}\nstderr: ${execErr.stderr}`
+			);
+		}
+	}
+
+	const raw = await readFile(jsonPath, 'utf-8');
+	const data = JSON.parse(raw);
+
+	const messages: EpubcheckMessage[] = (data.messages || []).map(
+		(m: { ID: string; severity: string; message: string }) => ({
+			ID: m.ID,
+			severity: m.severity,
+			message: m.message
+		})
+	);
+
+	await rm(tmpDir, { recursive: true, force: true });
+
+	return {
+		valid: data.checker?.nFatal === 0 && data.checker?.nError === 0,
+		errors: data.checker?.nError ?? 0,
+		warnings: data.checker?.nWarning ?? 0,
+		fatals: data.checker?.nFatal ?? 0,
+		messages
+	};
 }
 
 /**

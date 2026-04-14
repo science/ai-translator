@@ -37,16 +37,27 @@ function markdownToXhtml(markdown: string): string {
  */
 function extractHeadings(markdown: string): Array<{ level: number; text: string; id: string }> {
 	const headings: Array<{ level: number; text: string; id: string }> = [];
+	const idCounts = new Map<string, number>();
 	const lines = markdown.split('\n');
 	for (const line of lines) {
 		const match = line.match(/^(#{1,6})\s+(.+)$/);
 		if (match) {
 			const level = match[1].length;
 			const text = match[2].trim();
-			const id = text
+			let baseId = text
 				.toLowerCase()
 				.replace(/[^\w\s-]/g, '')
-				.replace(/\s+/g, '-');
+				.replace(/\s+/g, '-')
+				.replace(/^-+|-+$/g, '');
+
+			if (!baseId) {
+				baseId = 'heading';
+			}
+
+			const count = idCounts.get(baseId) || 0;
+			idCounts.set(baseId, count + 1);
+			const id = count === 0 ? baseId : `${baseId}-${count + 1}`;
+
 			headings.push({ level, text, id });
 		}
 	}
@@ -60,7 +71,7 @@ function generateOpf(metadata: EpubMetadata): string {
 	const title = metadata.title || 'Untitled';
 	const language = metadata.language || 'en';
 	const author = metadata.author || 'Unknown';
-	const uuid = crypto.randomUUID();
+	const uuid = generateUUID();
 
 	return `<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="BookId">
@@ -121,16 +132,35 @@ function generateContent(
 	xhtml: string,
 	headings: Array<{ level: number; text: string; id: string }>
 ): string {
-	// Add id attributes to headings for TOC linking
+	// Find all heading tags in the XHTML by position, then pair 1:1 with
+	// the headings array (both are in document order). This avoids matching
+	// by text content, which breaks when marked HTML-escapes characters
+	// (e.g. & becomes &amp;).
 	let processedXhtml = xhtml;
-	for (const heading of headings) {
-		const tag = `h${heading.level}`;
-		const escapedText = heading.text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-		const regex = new RegExp(`<${tag}>(${escapedText})</${tag}>`, 'i');
-		processedXhtml = processedXhtml.replace(
-			regex,
-			`<${tag} id="${heading.id}">$1</${tag}>`
-		);
+	const headingPositions: Array<{ index: number; fullMatch: string; tag: string }> = [];
+
+	for (let level = 1; level <= 6; level++) {
+		const tag = `h${level}`;
+		const regex = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, 'gi');
+		let match;
+		while ((match = regex.exec(processedXhtml)) !== null) {
+			headingPositions.push({ index: match.index, fullMatch: match[0], tag });
+		}
+	}
+
+	headingPositions.sort((a, b) => a.index - b.index);
+
+	// Replace in reverse order to preserve string indices
+	for (let i = headingPositions.length - 1; i >= 0; i--) {
+		if (i < headings.length) {
+			const pos = headingPositions[i];
+			const heading = headings[i];
+			const replacement = pos.fullMatch.replace(`<${pos.tag}>`, `<${pos.tag} id="${heading.id}">`);
+			processedXhtml =
+				processedXhtml.slice(0, pos.index) +
+				replacement +
+				processedXhtml.slice(pos.index + pos.fullMatch.length);
+		}
 	}
 
 	return `<?xml version="1.0" encoding="UTF-8"?>
@@ -176,6 +206,21 @@ const CONTAINER_XML = `<?xml version="1.0" encoding="UTF-8"?>
     <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml" />
   </rootfiles>
 </container>`;
+
+/**
+ * Generate a UUID v4. Falls back to crypto.getRandomValues when
+ * crypto.randomUUID is unavailable (non-secure HTTP contexts).
+ */
+function generateUUID(): string {
+	if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+		return crypto.randomUUID();
+	}
+	const bytes = crypto.getRandomValues(new Uint8Array(16));
+	bytes[6] = (bytes[6] & 0x0f) | 0x40; // version 4
+	bytes[8] = (bytes[8] & 0x3f) | 0x80; // variant 1
+	const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+	return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 function escapeXml(str: string): string {
 	return str

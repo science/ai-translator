@@ -1,5 +1,11 @@
 import { test, expect } from '@playwright/test';
-import { clearAllStorage, addDocumentToIndexedDB } from './helpers';
+import { clearAllStorage, addDocumentToIndexedDB, validateEpubWithEpubcheck } from './helpers';
+import { readFile } from 'fs/promises';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const fixturesDir = resolve(__dirname, '..', 'fixtures');
 
 /**
  * Tests for EPUB export feature on documents page
@@ -155,5 +161,88 @@ test.describe('EPUB Export - Documents Page', () => {
 		const exportEpubButton = documentRow.locator('[data-testid="export-epub"]');
 
 		await expect(exportEpubButton).toHaveAttribute('title', /epub/i);
+	});
+});
+
+/**
+ * EPUB Validation tests using epubcheck.
+ * Each test loads a realistic markdown fixture, exports it as EPUB via the browser,
+ * then validates the resulting file with the system epubcheck CLI.
+ */
+test.describe('EPUB Validation - epubcheck', () => {
+	test.describe.configure({ mode: 'serial' });
+	test.beforeEach(async ({ page }) => {
+		await page.goto('/');
+		await clearAllStorage(page);
+	});
+
+	async function exportAndValidate(
+		page: import('@playwright/test').Page,
+		docId: string,
+		filename: string,
+		content: string
+	) {
+		await addDocumentToIndexedDB(page, {
+			id: docId,
+			name: filename,
+			type: 'markdown',
+			content,
+			size: content.length,
+			uploadedAt: new Date().toISOString(),
+			phase: 'uploaded'
+		});
+
+		await page.goto('/documents');
+		await page.waitForLoadState('networkidle');
+
+		const downloadPromise = page.waitForEvent('download', { timeout: 60000 });
+
+		const documentRow = page.locator('[data-testid="document-row"]').first();
+		await expect(documentRow).toBeVisible();
+		const exportEpubButton = documentRow.locator('[data-testid="export-epub"]');
+		await expect(exportEpubButton).toBeVisible();
+		await exportEpubButton.click({ force: true });
+
+		const download = await downloadPromise;
+		const epubPath = await download.path();
+		expect(epubPath).toBeTruthy();
+
+		return validateEpubWithEpubcheck(epubPath!);
+	}
+
+	test('english textbook EPUB passes epubcheck validation', async ({ page }) => {
+		test.setTimeout(120000);
+		const content = await readFile(resolve(fixturesDir, 'english-textbook.md'), 'utf-8');
+		const result = await exportAndValidate(page, 'doc_epubcheck_english', 'english-textbook.md', content);
+
+		if (!result.valid || result.warnings > 0) {
+			console.log('epubcheck messages:', JSON.stringify(result.messages, null, 2));
+		}
+		expect(result.errors).toBe(0);
+		expect(result.warnings).toBe(0);
+	});
+
+	test('japanese book EPUB passes epubcheck validation', async ({ page }) => {
+		test.setTimeout(120000);
+		const content = await readFile(resolve(fixturesDir, 'japanese-book.md'), 'utf-8');
+		const result = await exportAndValidate(page, 'doc_epubcheck_japanese', 'japanese-book.md', content);
+
+		if (!result.valid || result.warnings > 0) {
+			console.log('epubcheck messages:', JSON.stringify(result.messages, null, 2));
+		}
+		expect(result.errors).toBe(0);
+		expect(result.warnings).toBe(0);
+	});
+
+	test('bilingual mixed EPUB passes epubcheck validation', async ({ page }) => {
+		test.setTimeout(120000);
+		const content = await readFile(resolve(fixturesDir, 'bilingual-mixed.md'), 'utf-8');
+		const result = await exportAndValidate(page, 'doc_epubcheck_bilingual', 'bilingual-mixed.md', content);
+
+		if (!result.valid || result.warnings > 0) {
+			console.log('epubcheck messages:', JSON.stringify(result.messages, null, 2));
+		}
+		expect(result.errors).toBe(0);
+		expect(result.warnings).toBe(0);
 	});
 });
