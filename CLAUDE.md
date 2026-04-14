@@ -325,6 +325,20 @@ The rectifier in `src/rectifier.js` uses a specialized system prompt emphasizing
   - `test/cli.test.js`: 4 tests for `--pdf-to-md` flag
   - `test/integration/pdfToMarkdown.test.js`: 3 integration tests
 
+## Deployment
+
+The web app is deployed to GitHub Pages via a GitHub Actions workflow triggered by pushes to the `production` branch.
+
+**To deploy:** Push `main` to `production` directly — no PRs.
+```bash
+git push origin main:production
+```
+
+Keep `main` and `production` in sync by always pushing both after committing:
+```bash
+git push origin main && git push origin main:production
+```
+
 ## Environment
 
 - **API Key**: Set `OPENAI_API_KEY` in `.env` file (see `.env.example`)
