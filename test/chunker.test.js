@@ -107,4 +107,44 @@ describe('chunker', () => {
       });
     });
   });
+
+  describe('empty chunk suppression', () => {
+    // Regression: a document beginning with a blank line produced an empty
+    // preamble chunk, which the API translated to "" and the translator then
+    // rejected as "Missing translation field in response".
+    test('should not emit an empty chunk for a leading blank line', async () => {
+      const filePath = join(__dirname, 'fixtures', 'leading-blank-line.md');
+      const content = await readMarkdownFile(filePath);
+      const chunks = chunkBySize(content, 4000);
+
+      expect(chunks.length).toBeGreaterThan(0);
+      expect(chunks.filter(c => c.content.trim() === '')).toEqual([]);
+      expect(chunks[0].content).toContain('# CHAPTER 1');
+    });
+
+    test('should not emit an empty chunk for leading whitespace before a header', () => {
+      const chunks = chunkMarkdown('\n\n   \n# Header\n\nBody.');
+
+      expect(chunks.filter(c => c.content.trim() === '')).toEqual([]);
+      expect(chunks.length).toBe(1);
+    });
+
+    test('should keep indices contiguous after suppressing empty chunks', () => {
+      const chunks = chunkMarkdown('\n# One\n\nBody one.\n\n# Two\n\nBody two.');
+
+      expect(chunks.map(c => c.index)).toEqual([0, 1]);
+    });
+
+    test('should return an empty array for whitespace-only content', () => {
+      expect(chunkMarkdown('\n\n   \n')).toEqual([]);
+      expect(chunkBySize('\n\n   \n', 4000)).toEqual([]);
+    });
+
+    test('should not emit empty sub-chunks when splitting by paragraphs', () => {
+      const body = ['a'.repeat(60), '', '', 'b'.repeat(60), '', '', 'c'.repeat(60)].join('\n\n');
+      const chunks = chunkBySize(`# Big\n\n${body}`, 80);
+
+      expect(chunks.filter(c => c.content.trim() === '')).toEqual([]);
+    });
+  });
 });

@@ -51,7 +51,8 @@ describe('Translator Integration Tests', () => {
           content: expect.any(String)
         }
       ],
-      response_format: expect.any(Object)
+      response_format: expect.any(Object),
+      max_completion_tokens: expect.any(Number)
     });
   });
 

@@ -3,6 +3,7 @@
 
 import { createOpenAIClient } from './openai';
 import { is5SeriesModel, getValidReasoningEffort as getModelReasoningEffort } from '../models';
+import { calculateMaxCompletionTokens } from './translator';
 import type { TokenUsage } from './costCalculator';
 
 export interface RectifierOptions {
@@ -11,6 +12,7 @@ export interface RectifierOptions {
 	verbosity?: string;
 	reasoningEffort?: string;
 	maxRetries?: number;
+	maxCompletionTokens?: number;
 }
 
 /**
@@ -98,12 +100,16 @@ export function createRectifier(options: RectifierOptions): Rectifier {
 	async function rectifyChunk(chunk: string): Promise<RectificationResult> {
 		const systemPrompt = getSystemPrompt();
 
+		const maxCompletionTokens =
+			options.maxCompletionTokens ?? calculateMaxCompletionTokens(chunk.length);
+
 		const requestOptions: Parameters<typeof client.createChatCompletion>[0] = {
 			model,
 			messages: [
 				{ role: 'system', content: systemPrompt },
 				{ role: 'user', content: chunk }
-			]
+			],
+			max_completion_tokens: maxCompletionTokens
 		};
 
 		if (is5SeriesModel(model)) {
@@ -117,7 +123,25 @@ export function createRectifier(options: RectifierOptions): Rectifier {
 			throw new Error('Invalid response from OpenAI API');
 		}
 
-		const content = response.choices[0].message.content;
+		const choice = response.choices[0];
+
+		if (choice.message.refusal) {
+			throw new Error(`Model refused to rectify chunk: ${choice.message.refusal}`);
+		}
+
+		// Truncation would otherwise be silently written into the cleaned document.
+		if (choice.finish_reason === 'length') {
+			throw new Error(
+				`Rectification truncated: hit the ${maxCompletionTokens} completion token limit. ` +
+					'Reduce the chunk size or raise maxCompletionTokens.'
+			);
+		}
+
+		const content = choice.message.content;
+
+		if (typeof content !== 'string') {
+			throw new Error('Empty response from OpenAI API');
+		}
 
 		// Extract token usage from response, defaulting to 0 if not present
 		const usage: TokenUsage = {

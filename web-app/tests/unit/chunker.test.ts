@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { chunkMarkdown, chunkBySize, type Chunk } from '$lib/services/chunker';
+
+const LEADING_BLANK_FIXTURE = '../../../test/fixtures/leading-blank-line.md';
 
 describe('chunker', () => {
 	describe('chunkMarkdown', () => {
@@ -216,6 +219,46 @@ Long paragraph 3.`;
 			const chunks = chunkBySize(content);
 
 			expect(chunks.length).toBe(1);
+		});
+	});
+
+	describe('empty chunk suppression', () => {
+		// Regression: a document beginning with a blank line produced an empty
+		// preamble chunk, which the API translated to "" and the translator then
+		// rejected as "Missing translation field in response".
+		it('should not emit an empty chunk for a leading blank line', () => {
+			const content = readFileSync(new URL(LEADING_BLANK_FIXTURE, import.meta.url), 'utf-8');
+			const chunks = chunkBySize(content, 4000);
+
+			expect(chunks.length).toBeGreaterThan(0);
+			expect(chunks.filter((c) => c.content.trim() === '')).toEqual([]);
+			expect(chunks[0].content).toContain('# CHAPTER 1');
+		});
+
+		it('should not emit an empty chunk for leading whitespace before a header', () => {
+			const chunks = chunkMarkdown('\n\n   \n# Header\n\nBody.');
+
+			expect(chunks.filter((c) => c.content.trim() === '')).toEqual([]);
+			expect(chunks.length).toBe(1);
+		});
+
+		it('should keep indices contiguous after suppressing empty chunks', () => {
+			const chunks = chunkMarkdown('\n# One\n\nBody one.\n\n# Two\n\nBody two.');
+
+			expect(chunks.map((c) => c.index)).toEqual([0, 1]);
+		});
+
+		it('should return an empty array for whitespace-only content', () => {
+			expect(chunkMarkdown('\n\n   \n')).toEqual([]);
+			expect(chunkBySize('\n\n   \n', 4000)).toEqual([]);
+		});
+
+		it('should not emit empty sub-chunks when splitting by paragraphs', () => {
+			// Blank-line runs inside an oversized section yield empty paragraphs.
+			const body = ['a'.repeat(60), '', '', 'b'.repeat(60), '', '', 'c'.repeat(60)].join('\n\n');
+			const chunks = chunkBySize(`# Big\n\n${body}`, 80);
+
+			expect(chunks.filter((c) => c.content.trim() === '')).toEqual([]);
 		});
 	});
 });

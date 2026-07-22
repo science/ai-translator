@@ -30,6 +30,14 @@ export interface TranslationResult {
 }
 
 /**
+ * Shortens chunk content for inclusion in an error message.
+ */
+function previewChunk(content: string, maxLength = 80): string {
+	const flattened = content.replace(/\s+/g, ' ').trim();
+	return flattened.length <= maxLength ? flattened : `${flattened.slice(0, maxLength)}…`;
+}
+
+/**
  * Translates a document by processing chunks sequentially with context chaining
  */
 export async function translateDocument(
@@ -61,7 +69,18 @@ export async function translateDocument(
 			isLastChunk: i === chunks.length - 1
 		};
 
-		const result = await translateChunkFn(chunk.content, context);
+		let result: ChunkTranslationResult;
+		try {
+			result = await translateChunkFn(chunk.content, context);
+		} catch (error) {
+			// Without the chunk's identity a mid-document failure is undiagnosable.
+			const message = error instanceof Error ? error.message : String(error);
+			throw new Error(
+				`Chunk ${i + 1} of ${chunks.length} failed: ${message} ` +
+					`(starts with: "${previewChunk(chunk.content)}")`,
+				{ cause: error }
+			);
+		}
 
 		// Extract content and accumulate usage
 		const translatedContent = result.content;

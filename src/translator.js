@@ -4,6 +4,21 @@ import { is5SeriesModel, getValidReasoningEffort } from './models.js';
 
 dotenv.config();
 
+// Sizing for the completion ceiling. A 4062-char prose chunk measured 5489
+// completion tokens (4010 of them reasoning) on gpt-5.4-mini at medium effort;
+// one token per source character times this multiplier leaves ~3x headroom.
+const OUTPUT_TOKENS_PER_CHAR = 1;
+const REASONING_HEADROOM_MULTIPLIER = 4;
+const MIN_MAX_COMPLETION_TOKENS = 8192;
+
+/**
+ * Derives a completion-token ceiling from the source chunk length.
+ */
+export function calculateMaxCompletionTokens(sourceLength) {
+  const scaled = Math.ceil(sourceLength * OUTPUT_TOKENS_PER_CHAR) * REASONING_HEADROOM_MULTIPLIER;
+  return Math.max(MIN_MAX_COMPLETION_TOKENS, scaled);
+}
+
 export function createTranslator(options = {}) {
   let client;
 
@@ -141,6 +156,14 @@ CRITICAL: Complete Translation Required:
 
   function parseTranslationResponse(responseText) {
     const parsed = JSON.parse(responseText);
+
+    // The strict json_schema guarantees `translation` is present and a string, so
+    // an empty string is a valid translation of an empty chunk — not a missing
+    // field. Only a genuinely absent or non-string value is an error.
+    if (typeof parsed?.translation !== 'string') {
+      throw new Error('Missing translation field in response');
+    }
+
     return parsed.translation;
   }
 
@@ -184,6 +207,13 @@ CRITICAL: Complete Translation Required:
 
     const maxAttempts = (options.maxRetries !== undefined ? options.maxRetries : 2) + 1;
 
+    // Bound the completion so a runaway reasoning trace fails against a known
+    // ceiling instead of the model's implicit default.
+    const maxCompletionTokens =
+      options.maxCompletionTokens !== undefined
+        ? options.maxCompletionTokens
+        : calculateMaxCompletionTokens(chunk.length);
+
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const requestParams = {
@@ -197,7 +227,8 @@ CRITICAL: Complete Translation Required:
               role: 'user',
               content: userContent
             }
-          ]
+          ],
+          max_completion_tokens: maxCompletionTokens
         };
 
         if (useContextAware) {
@@ -215,7 +246,28 @@ CRITICAL: Complete Translation Required:
           throw new Error('Invalid response from OpenAI API');
         }
 
-        const rawContent = response.choices[0].message.content;
+        const choice = response.choices[0];
+
+        // A refusal returns null content, which would otherwise surface as an
+        // opaque "Cannot read properties of null".
+        if (choice.message.refusal) {
+          throw new Error(`Model refused to translate chunk: ${choice.message.refusal}`);
+        }
+
+        // Truncation leaves partial JSON, which would otherwise surface as a bare
+        // SyntaxError with no hint that the token ceiling was the cause.
+        if (choice.finish_reason === 'length') {
+          throw new Error(
+            `Translation truncated: hit the ${maxCompletionTokens} completion token limit. ` +
+            'Reduce the chunk size or raise maxCompletionTokens.'
+          );
+        }
+
+        const rawContent = choice.message.content;
+
+        if (typeof rawContent !== 'string') {
+          throw new Error('Empty response from OpenAI API');
+        }
 
         if (useContextAware) {
           return parseTranslationResponse(rawContent);

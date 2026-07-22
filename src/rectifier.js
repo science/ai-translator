@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import dotenv from 'dotenv';
 import { is5SeriesModel, getValidReasoningEffort } from './models.js';
+import { calculateMaxCompletionTokens } from './translator.js';
 
 dotenv.config();
 
@@ -111,6 +112,15 @@ CRITICAL: Complete Rectification:
 
     const maxAttempts = (options.maxRetries !== undefined ? options.maxRetries : 2) + 1;
 
+    const chunkContent = typeof chunk === 'string' ? chunk : chunk.content;
+
+    // Bound the completion so a runaway reasoning trace fails against a known
+    // ceiling instead of the model's implicit default.
+    const maxCompletionTokens =
+      options.maxCompletionTokens !== undefined
+        ? options.maxCompletionTokens
+        : calculateMaxCompletionTokens(chunkContent.length);
+
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const requestParams = {
@@ -122,9 +132,10 @@ CRITICAL: Complete Rectification:
             },
             {
               role: 'user',
-              content: typeof chunk === 'string' ? chunk : chunk.content
+              content: chunkContent
             }
-          ]
+          ],
+          max_completion_tokens: maxCompletionTokens
         };
 
         if (is5SeriesModel(model)) {
@@ -138,7 +149,25 @@ CRITICAL: Complete Rectification:
           throw new Error('Invalid response from OpenAI API');
         }
 
-        return response.choices[0].message.content;
+        const choice = response.choices[0];
+
+        if (choice.message.refusal) {
+          throw new Error(`Model refused to rectify chunk: ${choice.message.refusal}`);
+        }
+
+        // Truncation would otherwise be silently written into the cleaned document.
+        if (choice.finish_reason === 'length') {
+          throw new Error(
+            `Rectification truncated: hit the ${maxCompletionTokens} completion token limit. ` +
+            'Reduce the chunk size or raise maxCompletionTokens.'
+          );
+        }
+
+        if (typeof choice.message.content !== 'string') {
+          throw new Error('Empty response from OpenAI API');
+        }
+
+        return choice.message.content;
       } catch (error) {
         const isLastAttempt = attempt === maxAttempts;
         const shouldRetry = isRetryableError(error);

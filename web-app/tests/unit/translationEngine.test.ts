@@ -218,5 +218,65 @@ describe('translationEngine', () => {
 				'Translation failed'
 			);
 		});
+
+		// The original failure surfaced with no indication of which chunk died,
+		// which made a 44-chunk document impossible to diagnose from the UI alone.
+		describe('error context', () => {
+			// translateDocument resolves to a TranslationResult, so the rejection
+			// has to be narrowed back to an Error for assertions.
+			const captureError = async (
+				docChunks: Chunk[],
+				fn: Parameters<typeof translateDocument>[1]
+			): Promise<Error> => {
+				try {
+					await translateDocument(docChunks, fn);
+					throw new Error('expected translateDocument to reject');
+				} catch (e) {
+					return e as Error;
+				}
+			};
+
+			const chunks: Chunk[] = [
+				{ index: 0, type: 'header-section', headerLevel: 1, content: 'First chunk' },
+				{ index: 1, type: 'header-section', headerLevel: 1, content: 'A'.repeat(200) },
+				{ index: 2, type: 'header-section', headerLevel: 1, content: 'Third chunk' }
+			];
+
+			it('should identify which chunk failed', async () => {
+				const translateChunkFn = vi
+					.fn()
+					.mockResolvedValueOnce(mockResult('訳1'))
+					.mockRejectedValueOnce(new Error('Missing translation field in response'));
+
+				await expect(translateDocument(chunks, translateChunkFn)).rejects.toThrow(
+					/chunk 2 of 3/i
+				);
+			});
+
+			it('should include the original message and a content preview', async () => {
+				const translateChunkFn = vi
+					.fn()
+					.mockRejectedValue(new Error('Missing translation field in response'));
+
+				const error = await captureError(chunks, translateChunkFn);
+
+				expect(error.message).toContain('Missing translation field in response');
+				expect(error.message).toContain('First chunk');
+			});
+
+			it('should truncate long previews and preserve the original as cause', async () => {
+				const original = new Error('boom');
+				const translateChunkFn = vi
+					.fn()
+					.mockResolvedValueOnce(mockResult('訳1'))
+					.mockRejectedValueOnce(original);
+
+				const error = await captureError(chunks, translateChunkFn);
+
+				expect(error.message).not.toContain('A'.repeat(120));
+				expect(error.message).toContain('…');
+				expect(error.cause).toBe(original);
+			});
+		});
 	});
 });

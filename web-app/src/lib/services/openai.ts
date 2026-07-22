@@ -21,6 +21,7 @@ export interface ChatCompletionOptions {
 	};
 	verbosity?: string;
 	reasoning_effort?: string;
+	max_completion_tokens?: number;
 }
 
 export interface ChatCompletionResponse {
@@ -32,7 +33,8 @@ export interface ChatCompletionResponse {
 		index: number;
 		message: {
 			role: string;
-			content: string;
+			content: string | null;
+			refusal?: string | null;
 		};
 		finish_reason: string;
 	}[];
@@ -103,6 +105,12 @@ export function createOpenAIClient(options: OpenAIClientOptions): OpenAIClient {
 				// Add response_format if provided
 				if (completionOptions.response_format) {
 					body.response_format = completionOptions.response_format;
+				}
+
+				// Bound the completion so a runaway reasoning trace fails against a
+				// known ceiling instead of the model's implicit default.
+				if (completionOptions.max_completion_tokens !== undefined) {
+					body.max_completion_tokens = completionOptions.max_completion_tokens;
 				}
 
 				// Add GPT-5 parameters if model is in the GPT-5 series

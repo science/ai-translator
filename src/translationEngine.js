@@ -1,3 +1,11 @@
+/**
+ * Shortens chunk content for inclusion in an error message.
+ */
+function previewChunk(content, maxLength = 80) {
+  const flattened = content.replace(/\s+/g, ' ').trim();
+  return flattened.length <= maxLength ? flattened : `${flattened.slice(0, maxLength)}…`;
+}
+
 export async function translateDocument(chunks, translateChunkFn, options = {}) {
   const { onProgress } = options;
   const translatedChunks = [];
@@ -17,7 +25,18 @@ export async function translateDocument(chunks, translateChunkFn, options = {}) 
       isLastChunk: i === chunks.length - 1
     };
 
-    const translatedContent = await translateChunkFn(chunk.content, context);
+    let translatedContent;
+    try {
+      translatedContent = await translateChunkFn(chunk.content, context);
+    } catch (error) {
+      // Without the chunk's identity a mid-document failure is undiagnosable.
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Chunk ${i + 1} of ${chunks.length} failed: ${message} ` +
+        `(starts with: "${previewChunk(chunk.content)}")`,
+        { cause: error }
+      );
+    }
 
     // Store translation for next chunk's context
     previousTranslation = translatedContent;

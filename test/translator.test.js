@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import { createTranslator } from '../src/translator.js';
+import { createTranslator, calculateMaxCompletionTokens } from '../src/translator.js';
 
 describe('translator', () => {
   describe('createTranslator', () => {
@@ -105,7 +105,8 @@ describe('translator', () => {
             content: expect.any(String)
           }
         ],
-        response_format: expect.any(Object)
+        response_format: expect.any(Object),
+        max_completion_tokens: expect.any(Number)
       });
     });
 
@@ -153,7 +154,8 @@ describe('translator', () => {
             content: expect.any(String)
           }
         ],
-        response_format: expect.any(Object)
+        response_format: expect.any(Object),
+        max_completion_tokens: expect.any(Number)
       });
     });
 
@@ -791,6 +793,114 @@ describe('translator', () => {
       const systemMessage = callArgs.messages.find(m => m.role === 'system');
 
       expect(systemMessage.content).toContain('Japanese');
+    });
+  });
+
+  describe('calculateMaxCompletionTokens', () => {
+    test('should scale with source length', () => {
+      expect(calculateMaxCompletionTokens(4000)).toBeGreaterThan(calculateMaxCompletionTokens(2000));
+    });
+
+    test('should leave headroom over observed real-world usage', () => {
+      // A 4062-char chunk measured 5489 completion tokens (4010 reasoning) on
+      // gpt-5.4-mini at medium effort.
+      expect(calculateMaxCompletionTokens(4062)).toBeGreaterThan(5489 * 2);
+    });
+
+    test('should enforce a floor for tiny chunks', () => {
+      expect(calculateMaxCompletionTokens(1)).toBeGreaterThanOrEqual(8192);
+      expect(calculateMaxCompletionTokens(0)).toBeGreaterThanOrEqual(8192);
+    });
+  });
+
+  describe('response handling', () => {
+    let translator;
+    let mockCreate;
+
+    beforeEach(() => {
+      process.env.OPENAI_API_KEY = 'test-api-key';
+      mockCreate = jest.fn();
+      translator = createTranslator({ maxRetries: 0 });
+      translator.client.chat.completions.create = mockCreate;
+    });
+
+    // Regression: the web app rejected an empty translation as a missing field.
+    // The CLI had the mirror-image flaw — it returned undefined silently.
+    test('should return an empty string when the model translates to nothing', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: '{"translation": ""}' }, finish_reason: 'stop' }]
+      });
+
+      await expect(translator.translateChunk('')).resolves.toBe('');
+    });
+
+    test('should throw when the translation field is absent', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: '{"other": "value"}' }, finish_reason: 'stop' }]
+      });
+
+      await expect(translator.translateChunk('Hello')).rejects.toThrow(
+        'Missing translation field in response'
+      );
+    });
+
+    test('should send max_completion_tokens scaled to the chunk', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: '{"translation": "訳"}' }, finish_reason: 'stop' }]
+      });
+
+      await translator.translateChunk('x'.repeat(4000));
+
+      expect(mockCreate.mock.calls[0][0].max_completion_tokens).toBe(
+        calculateMaxCompletionTokens(4000)
+      );
+    });
+
+    test('should honour an explicit maxCompletionTokens option', async () => {
+      const custom = createTranslator({ maxRetries: 0, maxCompletionTokens: 555 });
+      custom.client.chat.completions.create = mockCreate;
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: '{"translation": "訳"}' }, finish_reason: 'stop' }]
+      });
+
+      await custom.translateChunk('Hello');
+
+      expect(mockCreate.mock.calls[0][0].max_completion_tokens).toBe(555);
+    });
+
+    test('should throw a clear error when the response is truncated', async () => {
+      const custom = createTranslator({ maxRetries: 0, maxCompletionTokens: 500 });
+      custom.client.chat.completions.create = mockCreate;
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: '{"translation": "途中で' }, finish_reason: 'length' }]
+      });
+
+      await expect(custom.translateChunk('Hello')).rejects.toThrow(
+        /truncated.*500.*completion token/i
+      );
+    });
+
+    test('should throw a clear error when the model refuses', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: { content: null, refusal: 'I cannot help with that.' },
+          finish_reason: 'stop'
+        }]
+      });
+
+      await expect(translator.translateChunk('Hello')).rejects.toThrow(
+        'Model refused to translate chunk: I cannot help with that.'
+      );
+    });
+
+    test('should throw a clear error when content is null without a refusal', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: null }, finish_reason: 'stop' }]
+      });
+
+      await expect(translator.translateChunk('Hello')).rejects.toThrow(
+        'Empty response from OpenAI API'
+      );
     });
   });
 });

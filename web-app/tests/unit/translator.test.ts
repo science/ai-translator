@@ -5,6 +5,7 @@ import {
 	getLegacySystemPrompt,
 	buildContextMessage,
 	parseTranslationResponse,
+	calculateMaxCompletionTokens,
 	type TranslationResult
 } from '$lib/services/translator';
 
@@ -118,6 +119,29 @@ describe('translator service', () => {
 		it('should throw if translation field is missing', () => {
 			expect(() => parseTranslationResponse('{"other": "value"}')).toThrow();
 		});
+
+		// Regression: `!parsed.translation` treated an empty string as a missing
+		// field. The strict json_schema guarantees the key is present, so "" is a
+		// valid (if degenerate) translation and must pass through untouched.
+		it('should return an empty string when the model translates to nothing', () => {
+			expect(parseTranslationResponse('{"translation": ""}')).toBe('');
+		});
+
+		it('should throw when translation is present but not a string', () => {
+			expect(() => parseTranslationResponse('{"translation": null}')).toThrow(
+				'Missing translation field in response'
+			);
+			expect(() => parseTranslationResponse('{"translation": 42}')).toThrow(
+				'Missing translation field in response'
+			);
+		});
+
+		it('should throw a clear error when the response is null or empty', () => {
+			expect(() => parseTranslationResponse(null as unknown as string)).toThrow(
+				'Empty response from OpenAI API'
+			);
+			expect(() => parseTranslationResponse('')).toThrow('Empty response from OpenAI API');
+		});
 	});
 
 	describe('createTranslator', () => {
@@ -133,6 +157,98 @@ describe('translator service', () => {
 
 		it('should throw if API key is not provided', () => {
 			expect(() => createTranslator({ apiKey: '' })).toThrow('API key is required');
+		});
+
+		// Regression: no completion-token ceiling was ever sent, so the request
+		// relied on the model's implicit default. A reasoning model that overruns
+		// it returns truncated JSON, which surfaced as a bare SyntaxError.
+		describe('completion token limit', () => {
+			const okResponse = (content: string, finishReason = 'stop') => ({
+				ok: true,
+				json: () =>
+					Promise.resolve({
+						id: 'chatcmpl-123',
+						choices: [{ message: { content }, finish_reason: finishReason }],
+						usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 }
+					})
+			});
+
+			it('should send max_completion_tokens scaled to the chunk', async () => {
+				globalThis.fetch = vi.fn().mockResolvedValue(okResponse('{"translation": "訳"}'));
+
+				const translator = createTranslator({ apiKey: 'test-key' });
+				await translator.translateChunk('x'.repeat(4000));
+
+				const body = JSON.parse(
+					vi.mocked(globalThis.fetch).mock.calls[0][1]?.body as string
+				);
+				expect(body.max_completion_tokens).toBe(calculateMaxCompletionTokens(4000));
+			});
+
+			it('should honour an explicit maxCompletionTokens option', async () => {
+				globalThis.fetch = vi.fn().mockResolvedValue(okResponse('{"translation": "訳"}'));
+
+				const translator = createTranslator({ apiKey: 'test-key', maxCompletionTokens: 999 });
+				await translator.translateChunk('Hello');
+
+				const body = JSON.parse(
+					vi.mocked(globalThis.fetch).mock.calls[0][1]?.body as string
+				);
+				expect(body.max_completion_tokens).toBe(999);
+			});
+
+			it('should throw a clear error when the response is truncated', async () => {
+				globalThis.fetch = vi
+					.fn()
+					.mockResolvedValue(okResponse('{"translation": "途中で切れ', 'length'));
+
+				const translator = createTranslator({ apiKey: 'test-key', maxCompletionTokens: 500 });
+
+				await expect(translator.translateChunk('Hello')).rejects.toThrow(
+					/truncated.*500.*completion token/i
+				);
+			});
+
+			it('should throw a clear error when the model refuses', async () => {
+				globalThis.fetch = vi.fn().mockResolvedValue({
+					ok: true,
+					json: () =>
+						Promise.resolve({
+							id: 'chatcmpl-123',
+							choices: [
+								{
+									message: { content: null, refusal: 'I cannot help with that.' },
+									finish_reason: 'stop'
+								}
+							]
+						})
+				});
+
+				const translator = createTranslator({ apiKey: 'test-key' });
+
+				await expect(translator.translateChunk('Hello')).rejects.toThrow(
+					'Model refused to translate chunk: I cannot help with that.'
+				);
+			});
+		});
+
+		describe('calculateMaxCompletionTokens', () => {
+			it('should scale with source length', () => {
+				expect(calculateMaxCompletionTokens(4000)).toBeGreaterThan(
+					calculateMaxCompletionTokens(2000)
+				);
+			});
+
+			it('should leave headroom over observed real-world usage', () => {
+				// A 4062-char chunk of prose measured 5489 completion tokens
+				// (4010 of them reasoning) on gpt-5.4-mini at medium effort.
+				expect(calculateMaxCompletionTokens(4062)).toBeGreaterThan(5489 * 2);
+			});
+
+			it('should enforce a floor for tiny chunks', () => {
+				expect(calculateMaxCompletionTokens(1)).toBeGreaterThanOrEqual(8192);
+				expect(calculateMaxCompletionTokens(0)).toBeGreaterThanOrEqual(8192);
+			});
 		});
 
 		it('should create a translator with translateChunk function', () => {

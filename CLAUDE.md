@@ -271,6 +271,13 @@ The chunker preserves document hierarchy:
 3. Large chunks are sub-divided by paragraph breaks (`\n\n+`)
 4. Each chunk tracks: type (`'header-section'`, `'paragraph-section'`, `'preamble'`), headerLevel, index
 
+**Whitespace-only chunks are never emitted.** A document that begins with a blank
+line (common in converter and rectifier output) would otherwise produce an empty
+`preamble` chunk at index 0. The API translates an empty chunk to `""` — a valid
+response — which then failed the whole run. Both `chunkMarkdown()` and
+`splitByParagraphs()` discard whitespace-only content, and indices stay
+contiguous. See `test/fixtures/leading-blank-line.md`.
+
 ### Translation System Prompt
 
 The translator in `src/translator.js` uses a detailed system prompt emphasizing:
@@ -297,6 +304,39 @@ The rectifier in `src/rectifier.js` uses a specialized system prompt emphasizing
 - Retryable errors (429, 500-504, network errors) trigger exponential backoff
 - Non-retryable errors fail immediately
 - Translation errors include chunk preview and length in logs
+- `translateDocument()` wraps any chunk failure as
+  `Chunk N of M failed: <message> (starts with: "…")`, with the original error
+  attached as `cause`. Without this, a mid-document failure gives no indication
+  of which chunk died.
+
+**API response edge cases** (handled in both `translator` and `rectifier`, CLI and web app):
+
+| Condition | Behavior |
+|-----------|----------|
+| `{"translation": ""}` | Valid — returned as `""`. The strict `json_schema` guarantees the field exists, so an empty string is a legitimate translation, **not** a missing field. Testing `!parsed.translation` here is a bug. |
+| `message.refusal` set | Throws `Model refused to translate/rectify chunk: <reason>` (content is `null` in this case) |
+| `finish_reason === 'length'` | Throws `Translation/Rectification truncated: hit the N completion token limit` |
+| `content` null or non-string | Throws `Empty response from OpenAI API` |
+
+### Completion Token Limits
+
+Requests send an explicit `max_completion_tokens`, derived per chunk by
+`calculateMaxCompletionTokens(sourceLength)` (exported from `src/translator.js`
+and `web-app/src/lib/services/translator.ts`):
+
+```
+max(8192, ceil(sourceLength × 1 token/char) × 4)
+```
+
+The ×4 is reasoning headroom. A 4062-character prose chunk measured 5489
+completion tokens (4010 of them reasoning) on gpt-5.4-mini at medium effort, so
+the default 4000-character chunk gets a 16000-token ceiling — roughly 3×
+observed usage. Override with the `maxCompletionTokens` option on
+`createTranslator()` / `createRectifier()`.
+
+Without an explicit ceiling, requests ride the model's implicit default and a
+truncated response surfaces as a bare JSON `SyntaxError` with no indication that
+tokens were the cause.
 
 ### Testing Approach
 
@@ -306,24 +346,36 @@ The rectifier in `src/rectifier.js` uses a specialized system prompt emphasizing
   - Standard markdown fixtures for translation testing
   - Broken document fixtures for rectification testing (e.g., `broken-missing-letters.md`, `broken-gibberish.md`)
   - PDF fixture for PDF conversion testing (`sample.pdf`)
+  - `leading-blank-line.md` — document starting with a blank line (empty-chunk regression)
 - **Test types**:
   - Unit tests for each module (e.g., `test/chunker.test.js`, `test/rectifier.test.js`, `test/pdfReader.test.js`)
   - Integration tests in `test/integration/` for full pipelines
-  - **153 total tests** (133 original + 20 for PDF-to-markdown feature)
 - Tests use `fileURLToPath` and `dirname` for ES module path resolution
 
-**Test Coverage:**
-- Rectification feature (21 tests):
-  - `test/rectifier.test.js`: 6 tests for rectifier module
-  - `test/rectificationEngine.test.js`: 7 tests for rectification engine
-  - `test/assembler.test.js`: 5 tests for `assembleRectified()`
-  - `test/cli.test.js`: 3 tests for `--rectify` flag
-- PDF-to-markdown feature (20 tests):
-  - `test/pdfReader.test.js`: 4 tests for PDF file reading
-  - `test/pdfConverter.test.js`: 4 tests for PDF conversion
-  - `test/assembler.test.js`: 5 tests for `assemblePdfToMarkdown()`
-  - `test/cli.test.js`: 4 tests for `--pdf-to-md` flag
-  - `test/integration/pdfToMarkdown.test.js`: 3 integration tests
+**Test counts** (keep these current when adding tests):
+- CLI: **264 tests** across 22 suites (`npm test`)
+- Web app: **419 unit tests** across 23 suites (`cd web-app && npm run test:unit`),
+  plus 4 live-API tests skipped by default (see below)
+
+Note: `web-app/tests/unit/build-integrity.test.ts` reads the `build/` directory and
+fails with 5 errors unless `npm run build` has been run first. Use `npm run test:build`
+to do both in one step.
+
+### Live API Test Harness
+
+`web-app/tests/unit/translator.live.test.ts` exercises the real OpenAI endpoint
+end to end — chunking, translating, and assembling `test/fixtures/leading-blank-line.md`
+against gpt-5.4-mini. It is **skipped by default** (it costs money) and only runs
+when both env vars are set:
+
+```bash
+cd web-app
+LIVE_API=1 OPENAI_API_KEY=sk-... npx vitest run tests/unit/translator.live.test.ts
+```
+
+Use it to reproduce API-behavior bugs that mocks cannot show — the empty-chunk
+failure above was diagnosed this way, by observing the API return a literal
+`{"translation":""}` with `finish_reason: "stop"`.
 
 ## Deployment
 

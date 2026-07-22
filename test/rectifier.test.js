@@ -1,5 +1,6 @@
 import { jest } from '@jest/globals';
 import { createRectifier } from '../src/rectifier.js';
+import { calculateMaxCompletionTokens } from '../src/translator.js';
 
 describe('Rectifier', () => {
   let mockCreate;
@@ -210,6 +211,71 @@ describe('Rectifier', () => {
           model: 'gpt-5',
           reasoning_effort: 'none'
         })
+      );
+    });
+  });
+
+  // Same unbounded-completion and null-content exposure as the translator.
+  describe('response handling', () => {
+    const makeRectifier = (options = {}) => {
+      const rectifier = createRectifier({ maxRetries: 0, verbose: false, ...options });
+      rectifier.client.chat.completions.create = mockCreate;
+      return rectifier;
+    };
+    const chunk = content => ({ index: 0, type: 'preamble', content });
+
+    it('should send max_completion_tokens scaled to the chunk', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: 'Fixed' }, finish_reason: 'stop' }]
+      });
+
+      await makeRectifier().rectifyChunk(chunk('x'.repeat(4000)));
+
+      expect(mockCreate.mock.calls[0][0].max_completion_tokens).toBe(
+        calculateMaxCompletionTokens(4000)
+      );
+    });
+
+    it('should honour an explicit maxCompletionTokens option', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: 'Fixed' }, finish_reason: 'stop' }]
+      });
+
+      await makeRectifier({ maxCompletionTokens: 321 }).rectifyChunk(chunk('Broken'));
+
+      expect(mockCreate.mock.calls[0][0].max_completion_tokens).toBe(321);
+    });
+
+    it('should throw a clear error when the response is truncated', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: 'Half a sen' }, finish_reason: 'length' }]
+      });
+
+      await expect(
+        makeRectifier({ maxCompletionTokens: 500 }).rectifyChunk(chunk('Broken'))
+      ).rejects.toThrow(/truncated.*500.*completion token/i);
+    });
+
+    it('should throw a clear error when the model refuses', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{
+          message: { content: null, refusal: 'I cannot help with that.' },
+          finish_reason: 'stop'
+        }]
+      });
+
+      await expect(makeRectifier().rectifyChunk(chunk('Broken'))).rejects.toThrow(
+        'Model refused to rectify chunk: I cannot help with that.'
+      );
+    });
+
+    it('should throw a clear error when content is null without a refusal', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: null }, finish_reason: 'stop' }]
+      });
+
+      await expect(makeRectifier().rectifyChunk(chunk('Broken'))).rejects.toThrow(
+        'Empty response from OpenAI API'
       );
     });
   });

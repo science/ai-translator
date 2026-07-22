@@ -221,4 +221,45 @@ describe('Translation Engine', () => {
       expect(capturedContexts[0].context.isLastChunk).toBe(true);
     });
   });
+
+  // The original failure surfaced with no indication of which chunk died,
+  // which made a 44-chunk document impossible to diagnose.
+  describe('error context', () => {
+    const chunks = [
+      { index: 0, type: 'header-section', content: 'First chunk' },
+      { index: 1, type: 'header-section', content: 'A'.repeat(200) },
+      { index: 2, type: 'header-section', content: 'Third chunk' }
+    ];
+
+    it('should identify which chunk failed', async () => {
+      const translateChunkFn = jest.fn()
+        .mockResolvedValueOnce('訳1')
+        .mockRejectedValueOnce(new Error('Missing translation field in response'));
+
+      await expect(translateDocument(chunks, translateChunkFn)).rejects.toThrow(/chunk 2 of 3/i);
+    });
+
+    it('should include the original message and a content preview', async () => {
+      const translateChunkFn = jest.fn()
+        .mockRejectedValue(new Error('Missing translation field in response'));
+
+      const error = await translateDocument(chunks, translateChunkFn).catch(e => e);
+
+      expect(error.message).toContain('Missing translation field in response');
+      expect(error.message).toContain('First chunk');
+    });
+
+    it('should truncate long previews and preserve the original as cause', async () => {
+      const original = new Error('boom');
+      const translateChunkFn = jest.fn()
+        .mockResolvedValueOnce('訳1')
+        .mockRejectedValueOnce(original);
+
+      const error = await translateDocument(chunks, translateChunkFn).catch(e => e);
+
+      expect(error.message).not.toContain('A'.repeat(120));
+      expect(error.message).toContain('…');
+      expect(error.cause).toBe(original);
+    });
+  });
 });

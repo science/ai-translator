@@ -5,21 +5,29 @@ export function chunkMarkdown(content) {
   let currentHeaderLevel = null;
   let chunkIndex = 0;
 
+  // Flushes the accumulated lines as a chunk, skipping whitespace-only runs.
+  // A document that starts with a blank line would otherwise emit an empty
+  // preamble chunk, which the API translates to "" and the translator rejects.
+  const flush = () => {
+    const chunkContent = currentChunk.join('\n').trim();
+    currentChunk = [];
+    if (chunkContent === '') {
+      return;
+    }
+    chunks.push({
+      index: chunkIndex++,
+      type: currentHeaderLevel ? 'header-section' : 'preamble',
+      headerLevel: currentHeaderLevel,
+      content: chunkContent
+    });
+  };
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const headerMatch = line.match(/^(#{1,6})\s+(.+)$/);
 
     if (headerMatch) {
-      if (currentChunk.length > 0) {
-        chunks.push({
-          index: chunkIndex++,
-          type: currentHeaderLevel ? 'header-section' : 'preamble',
-          headerLevel: currentHeaderLevel,
-          content: currentChunk.join('\n').trim()
-        });
-        currentChunk = [];
-      }
-
+      flush();
       currentHeaderLevel = headerMatch[1].length;
       currentChunk.push(line);
     } else {
@@ -27,14 +35,7 @@ export function chunkMarkdown(content) {
     }
   }
 
-  if (currentChunk.length > 0) {
-    chunks.push({
-      index: chunkIndex++,
-      type: currentHeaderLevel ? 'header-section' : 'preamble',
-      headerLevel: currentHeaderLevel,
-      content: currentChunk.join('\n').trim()
-    });
-  }
+  flush();
 
   return chunks;
 }
@@ -51,7 +52,9 @@ export function chunkBySize(content, maxChunkSize = 4000) {
         index: chunkIndex++
       });
     } else {
-      const subChunks = splitByParagraphs(chunk.content, maxChunkSize);
+      const subChunks = splitByParagraphs(chunk.content, maxChunkSize).filter(
+        sub => sub.trim() !== ''
+      );
       for (const subChunk of subChunks) {
         finalChunks.push({
           index: chunkIndex++,

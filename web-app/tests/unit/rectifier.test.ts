@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createRectifier, getSystemPrompt, type RectificationResult } from '$lib/services/rectifier';
+import { calculateMaxCompletionTokens } from '$lib/services/translator';
 
 describe('rectifier service', () => {
 	describe('getSystemPrompt', () => {
@@ -297,6 +298,84 @@ describe('rectifier service', () => {
 				const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
 				const body = JSON.parse(fetchCall[1]?.body as string);
 				expect(body.reasoning_effort).toBe('none');
+			});
+
+			// Same unbounded-completion and null-content exposure as the translator.
+			describe('completion token limit', () => {
+				const okResponse = (content: string | null, finishReason = 'stop') => ({
+					ok: true,
+					json: () =>
+						Promise.resolve({
+							id: 'chatcmpl-123',
+							choices: [{ message: { content }, finish_reason: finishReason }]
+						})
+				});
+
+				it('should send max_completion_tokens scaled to the chunk', async () => {
+					globalThis.fetch = vi.fn().mockResolvedValue(okResponse('Fixed text'));
+
+					const rectifier = createRectifier({ apiKey: 'test-key' });
+					await rectifier.rectifyChunk('x'.repeat(4000));
+
+					const body = JSON.parse(
+						vi.mocked(globalThis.fetch).mock.calls[0][1]?.body as string
+					);
+					expect(body.max_completion_tokens).toBe(calculateMaxCompletionTokens(4000));
+				});
+
+				it('should honour an explicit maxCompletionTokens option', async () => {
+					globalThis.fetch = vi.fn().mockResolvedValue(okResponse('Fixed text'));
+
+					const rectifier = createRectifier({ apiKey: 'test-key', maxCompletionTokens: 777 });
+					await rectifier.rectifyChunk('Broken text');
+
+					const body = JSON.parse(
+						vi.mocked(globalThis.fetch).mock.calls[0][1]?.body as string
+					);
+					expect(body.max_completion_tokens).toBe(777);
+				});
+
+				it('should throw a clear error when the response is truncated', async () => {
+					globalThis.fetch = vi.fn().mockResolvedValue(okResponse('Half a sen', 'length'));
+
+					const rectifier = createRectifier({ apiKey: 'test-key', maxCompletionTokens: 500 });
+
+					await expect(rectifier.rectifyChunk('Broken text')).rejects.toThrow(
+						/truncated.*500.*completion token/i
+					);
+				});
+
+				it('should throw a clear error when the model refuses', async () => {
+					globalThis.fetch = vi.fn().mockResolvedValue({
+						ok: true,
+						json: () =>
+							Promise.resolve({
+								id: 'chatcmpl-123',
+								choices: [
+									{
+										message: { content: null, refusal: 'I cannot help with that.' },
+										finish_reason: 'stop'
+									}
+								]
+							})
+					});
+
+					const rectifier = createRectifier({ apiKey: 'test-key' });
+
+					await expect(rectifier.rectifyChunk('Broken text')).rejects.toThrow(
+						'Model refused to rectify chunk: I cannot help with that.'
+					);
+				});
+
+				it('should throw a clear error when content is null without a refusal', async () => {
+					globalThis.fetch = vi.fn().mockResolvedValue(okResponse(null));
+
+					const rectifier = createRectifier({ apiKey: 'test-key' });
+
+					await expect(rectifier.rectifyChunk('Broken text')).rejects.toThrow(
+						'Empty response from OpenAI API'
+					);
+				});
 			});
 		});
 	});
